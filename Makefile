@@ -131,14 +131,12 @@ else
     DEFINES_LIB = USE_LIB_ETHEREUM
 endif
 
-
 ########################################
 # Application communication interfaces #
 ########################################
 ENABLE_BLUETOOTH = 1
 ENABLE_SWAP = 1
 #ENABLE_NFC = 1
-ENABLE_NBGL_FOR_NANO_DEVICES = 1
 
 ########################################
 #         NBGL custom features         #
@@ -164,10 +162,13 @@ ENABLE_NBGL_QRCODE = 1
 ########################################
 #        Main app configuration        #
 ########################################
+ENABLE_NBGL_FOR_NANO_DEVICES = 1
 ENABLE_PKI_LIBRARY = 1
 ENABLE_DYNAMIC_ALLOC = 1
 ENABLE_TLV_LIBRARY = 1
 ENABLE_LISTS_LIBRARY = 1
+ENABLE_ADDRESS_BOOK = 1
+ENABLE_ADDRESS_BOOK_LEDGER_ACCOUNT = 1
 
 DEFINES += APP_TICKER=\"$(TICKER)\" APP_CHAIN_ID=$(CHAIN_ID) APP_COIN_TYPE=$(COIN_TYPE)
 
