@@ -58,6 +58,12 @@ addresses, functions tested, and high-level test context.
 
 ### Advanced Features
 
+- **[test_address_book.md](test_address_book.md)** - Address Book feature
+  - Register Identity and Ledger Account contacts
+  - Edit flows (Name, Identifier, Scope, Ledger Account)
+  - Provide Contact integration with ETH TX, EIP-712, and GCS
+  - Multi-address groups, HMAC security, cross-chain mismatch
+
 - **[test_gcs.md](test_gcs.md)** - Generic Clear Signing framework
   - OpenSea, POAP, 1inch, Safe operations
   - Field descriptors, formatters, nested calls

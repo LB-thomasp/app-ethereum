@@ -538,6 +538,57 @@ widely used.
 
 ---
 
+### test_address_book.py
+
+**Purpose:** Test the Address Book feature — securely associating human-readable names with
+blockchain addresses or device-managed accounts.
+
+**Key Features Tested:**
+
+- **Register Identity**: Bind a contact name and scope to an external address; device generates
+  `group_handle` + two independent HMAC proofs (`HMAC_PROOF`, `HMAC_REST`)
+- **Multi-Address Contacts**: Link multiple addresses to a single contact by re-registering
+  with an existing `group_handle`; a rename then propagates to all linked addresses
+- **Edit Flows**: Edit Contact Name, Edit Identifier, Edit Scope — each verified by presenting
+  the stored `group_handle` and the relevant HMAC proof(s)
+- **Register Ledger Account**: Bind an account name to a BIP32 derivation path managed by
+  the device
+- **Edit Ledger Account**: Rename an existing Ledger Account binding
+- **Provide Contact**: Deliver a registered contact to the device before TX signing; contact
+  name is shown instead of the raw address during review
+- **Provide Ledger Account Contact**: Same for BIP32-derived accounts; "From" field in TX
+  review shows the account name
+- **HMAC Security**: Corrupted `HMAC_PROOF` or `HMAC_REST` → `SECURITY_CONDITION_NOT_SATISFIED`
+  (0x6982)
+- **Integration**: Contact names resolved in ETH transfers, EIP-712 messages, and GCS batches
+
+**Test Cases:**
+
+- `test_address_book_register_identity`: Register and verify HMAC proofs
+- `test_address_book_edit_identifier`: Address change → new `HMAC_REST`
+- `test_address_book_edit_contact_name`: Rename → new `HMAC_PROOF`
+- `test_address_book_edit_scope`: Scope change → new `HMAC_REST`
+- `test_address_book_register_ledger_account`: Register BIP32-path account
+- `test_address_book_edit_ledger_account`: Rename Ledger Account
+- `test_address_book_simple_tx`: Contact name shown in basic ETH TX "To" field
+- `test_address_book_simple_tx_reject`: User rejection → 0x6985
+- `test_address_book_simple_tx_chain_id_mismatch`: Cross-chain contact not resolved
+- `test_address_book_multi_address`: Two addresses share a group; rename propagates to both
+- `test_address_book_simple_tx_ledger_account`: "From" and "To" both show account names
+- `test_address_book_eip712_calldata_empty_send`: Contact name in EIP-712 Safe review
+- `test_address_book_eip712_typed_field`: Contact name in EIP-712 `trusted_name` field
+- `test_address_book_gcs_empty_tx`: Contact name in GCS batch send
+- `test_address_book_gcs_trusted_name_field`: Contact name in GCS `ParamTrustedName` field
+- `test_address_book_gcs_combined_ab_and_tn`: Address Book + ENS combined display
+- `test_address_book_simple_tx_after_edit_identifier`: Post edit-identifier end-to-end flow
+- `test_address_book_simple_tx_after_edit_scope`: Post edit-scope end-to-end flow
+- `test_address_book_simple_tx_ledger_account_rename`: Post rename Ledger Account end-to-end flow
+- `test_address_book_provide_contact_invalid_hmac`: Corrupted HMAC → 0x6982
+
+📖 **[Detailed documentation with test coverage matrix](details/test_address_book.md)**
+
+---
+
 ## 7. External Chains
 
 ### test_clone.py
@@ -594,8 +645,8 @@ The test suite covers:
 - ✅ **Token Standards**: ERC-20, ERC-721, ERC-1155
 - ✅ **Message Signing**: EIP-191 (personal_sign), EIP-712 (structured data)
 - ✅ **Ethereum 2.0**: Deposits, withdrawals, consolidations
-- ✅ **Advanced Features**: GCS, transaction check, trusted names, Safe
-- ✅ **Security Features**: Blind signing, gating, threat detection
+- ✅ **Advanced Features**: GCS, transaction check, trusted names, Safe, Address Book
+- ✅ **Security Features**: Blind signing, gating, threat detection, HMAC-based contact proofs
 - ✅ **Account Abstraction**: EIP-7702 authorizations
 - ✅ **Multi-chain**: Dynamic networks, clone chains
 - ✅ **Privacy**: Hardware cryptographic operations
@@ -603,7 +654,7 @@ The test suite covers:
 ### Test Statistics
 
 - **Total Test Files**: 20
-- **Test Scenarios**: 100+ individual test functions
+- **Test Scenarios**: 120+ individual test functions
 - **Input Files**: 50+ EIP-712 test cases
 - **Device Types**: 5 (Nano S Plus, Nano X, Stax, Flex, Apex)
 - **Lines of Test Code**: ~7,500+

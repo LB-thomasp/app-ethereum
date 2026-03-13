@@ -24,7 +24,7 @@ The Ethereum Ledger app test suite uses:
 3. **Token Standards** - ERC-20, ERC-721, ERC-1155
 4. **Message Signing** - EIP-191 and EIP-712
 5. **Ethereum 2.0** - Staking operations, withdrawals, consolidations
-6. **Advanced Features** - Generic Clear Signing (GCS), transaction check, trusted names
+6. **Advanced Features** - Generic Clear Signing (GCS), transaction check, trusted names, Address Book
 7. **External Chains** - Clone chain support
 8. **Privacy Operations** - Hardware cryptographic operations
 
