@@ -3,6 +3,7 @@
 #include "gtp_field.h"
 #include "network.h"
 #include "trusted_name.h"
+#include "address_name_lookup.h"
 #include "gtp_field_table.h"
 #include "utils.h"
 #include "shared_context.h"
@@ -152,7 +153,6 @@ bool format_param_trusted_name(const struct s_field *field) {
     size_t buf_size = sizeof(strings.tmp.tmp);
     uint64_t chain_id = 0;
     uint8_t addr[ADDRESS_LENGTH] = {0};
-    const s_trusted_name *tname = NULL;
     e_param_type param_type;
     bool to_be_displayed = true;
     bool is_interoperable = (field->param_trusted_name.value_type == TNVT_INTEROPERABLE);
@@ -194,17 +194,35 @@ bool format_param_trusted_name(const struct s_field *field) {
         }
         if (!ret) break;
 
-        if ((tname = get_trusted_name(field->param_trusted_name.type_count,
+        // Address Book > Trusted Name > raw hex; extra_data carries the matched record for the
+        // alias detail view
+        e_addr_name_source name_source;
+        const void *extra_data = NULL;
+        if (!get_address_display_name(addr,
+                                      chain_id,
+                                      field->param_trusted_name.type_count,
                                       field->param_trusted_name.types,
                                       field->param_trusted_name.source_count,
                                       field->param_trusted_name.sources,
-                                      &chain_id,
-                                      addr)) != NULL) {
-            strlcpy(buf, tname->name, buf_size);
-            param_type = PARAM_TYPE_TRUSTED_NAME;
-        } else {
-            getEthDisplayableAddress(addr, buf, buf_size, g_chain_config->chain_id);
-            param_type = PARAM_TYPE_RAW;
+                                      buf,
+                                      buf_size,
+                                      &name_source,
+                                      &extra_data)) {
+            ret = false;
+            break;
+        }
+        // param_type drives how the field is rendered: ADDRESS_BOOK and TRUSTED_NAME
+        // entries carry an alias detail view (tappable name), RAW shows the plain address
+        switch (name_source) {
+            case ADDR_NAME_FROM_ADDRESS_BOOK:
+                param_type = PARAM_TYPE_ADDRESS_BOOK;
+                break;
+            case ADDR_NAME_FROM_TRUSTED_NAME:
+                param_type = PARAM_TYPE_TRUSTED_NAME;
+                break;
+            default:
+                param_type = PARAM_TYPE_RAW;
+                break;
         }
 
         if (is_interoperable) {
@@ -239,7 +257,7 @@ bool format_param_trusted_name(const struct s_field *field) {
         }
 
         if (to_be_displayed) {
-            if (!(ret = add_to_field_table(param_type, field->name, buf, tname))) {
+            if (!(ret = add_to_field_table(param_type, field->name, buf, extra_data))) {
                 break;
             }
         }

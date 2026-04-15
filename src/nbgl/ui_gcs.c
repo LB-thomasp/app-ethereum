@@ -19,6 +19,9 @@
 #include "token_info.h"
 #include "nft_info.h"
 #include "common_ui.h"
+#ifdef HAVE_ADDRESS_BOOK
+#include "handle_contacts.h"
+#endif  // HAVE_ADDRESS_BOOK
 
 static bool *index_allocated = NULL;
 
@@ -326,6 +329,62 @@ static const nbgl_contentValueExt_t *handle_extra_data_trusted_name(
     return extension;
 }
 
+#ifdef HAVE_ADDRESS_BOOK
+/**
+ * @brief Build the alias extension for an Address Book field.
+ *
+ * Populates an ADDRESS_BOOK_ALIAS extension so that tapping the field opens a
+ * detail view showing the contact name, optional scope, and the full hex address.
+ * If a Trusted Name also exists for the same address, it is stored in
+ * @c explanation so the detail view can display both names simultaneously.
+ *
+ * @param[in] field  Field table entry whose extra_data points to an s_ab_contact
+ * @return Allocated extension, or NULL on allocation / formatting failure
+ */
+static const nbgl_contentValueExt_t *handle_extra_data_address_book(
+    const s_field_table_entry *field) {
+    nbgl_contentValueExt_t *extension;
+    const s_ab_contact *ab_contact = (const s_ab_contact *) field->extra_data;
+    char formatted_addr[ADDRESS_LENGTH_HEX_STR];
+
+    if (!getEthDisplayableAddress((uint8_t *) ab_contact->identifier,
+                                  formatted_addr,
+                                  sizeof(formatted_addr),
+                                  g_chain_config->chain_id)) {
+        return NULL;
+    }
+    if (APP_MEM_CALLOC((void **) &extension, sizeof(*extension)) == false) {
+        return NULL;
+    }
+    if ((extension->fullValue = APP_MEM_STRDUP(formatted_addr)) == NULL) {
+        APP_MEM_FREE(extension);
+        return NULL;
+    }
+    extension->title = ab_contact->contact_name;
+    extension->aliasType = ADDRESS_BOOK_ALIAS;
+    // NULL suppresses the scope line in the detail view; an empty string would still render it
+    extension->aliasSubName = (ab_contact->scope[0] != '\0') ? ab_contact->scope : NULL;
+
+    // If a Trusted Name also exists for this address, store it in explanation so the
+    // detail view can show both the Address Book name and the Trusted Name together.
+    {
+        uint64_t chain_id = get_tx_chain_id();
+        e_name_type types[] = {TN_TYPE_ACCOUNT};
+        e_name_source sources[] = {TN_SOURCE_ENS, TN_SOURCE_LAB, TN_SOURCE_MAB};
+        const s_trusted_name *tname = get_trusted_name(ARRAYLEN(types),
+                                                       types,
+                                                       ARRAYLEN(sources),
+                                                       sources,
+                                                       &chain_id,
+                                                       ab_contact->identifier);
+        if (tname != NULL) {
+            extension->explanation = tname->name;
+        }
+    }
+    return extension;
+}
+#endif  // HAVE_ADDRESS_BOOK
+
 static const nbgl_contentValueExt_t *handle_extra_data_token(const s_field_table_entry *field) {
     const s_token_info *token_info = field->extra_data;
     char formatted_addr[ADDRESS_LENGTH_HEX_STR];
@@ -376,6 +435,13 @@ static bool handle_extra_data(const s_field_table_entry *field, nbgl_contentTagV
                 return false;
             }
             break;
+#ifdef HAVE_ADDRESS_BOOK
+        case PARAM_TYPE_ADDRESS_BOOK:
+            if ((pair->extension = handle_extra_data_address_book(field)) == NULL) {
+                return false;
+            }
+            break;
+#endif  // HAVE_ADDRESS_BOOK
         case PARAM_TYPE_TOKEN_AMOUNT:
         case PARAM_TYPE_TOKEN:
             if ((pair->extension = handle_extra_data_token(field)) == NULL) {

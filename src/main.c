@@ -52,9 +52,8 @@
 #include "ui_utils.h"
 #include "network_info.h"
 #ifdef HAVE_ADDRESS_BOOK
-#include "handle_provide_contact.h"
+#include "handle_contacts.h"
 #ifdef HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT
-#include "handle_ledger_account.h"
 #endif  // HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT
 #endif  // HAVE_ADDRESS_BOOK
 #include "cmd_safe_account.h"
@@ -121,9 +120,6 @@ void app_quit(void) {
     network_info_cleanup(NULL);
 #ifdef HAVE_ADDRESS_BOOK
     address_book_contact_cleanup();
-#ifdef HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT
-    ledger_account_contact_cleanup();
-#endif  // HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT
 #endif  // HAVE_ADDRESS_BOOK
     reset_app_context();
     app_exit();

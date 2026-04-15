@@ -8,6 +8,11 @@
 #include "ui_icons.h"
 #include "plugins.h"
 #include "trusted_name.h"
+#ifdef HAVE_ADDRESS_BOOK
+#include "handle_contacts.h"
+#ifdef HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT
+#endif  // HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT
+#endif  // HAVE_ADDRESS_BOOK
 #include "caller_app.h"
 #include "network.h"
 #include "cmd_get_tx_simulation.h"
@@ -22,6 +27,7 @@
 #define VALUE_MAX_LEN 100
 
 static nbgl_contentValueExt_t *extension = NULL;
+static nbgl_contentValueExt_t *from_extension = NULL;
 
 typedef struct {
     char title[TAG_MAX_LEN];
@@ -36,6 +42,7 @@ static plugin_buffers_t *plugin_buffers = NULL;
 static void _cleanup(void) {
     APP_MEM_FREE_AND_NULL((void **) &plugin_buffers);
     APP_MEM_FREE_AND_NULL((void **) &extension);
+    APP_MEM_FREE_AND_NULL((void **) &from_extension);
     ui_all_cleanup();
     proxy_cleanup();
 #ifdef HAVE_TRANSACTION_CHECKS
@@ -72,6 +79,71 @@ static void get_lowercase_operation(char *dst, size_t dst_len) {
 }
 
 /**
+ * Resolves a raw Ethereum address to its display name and fills @p pair.
+ *
+ * Priority: Address Book contact name > ENS trusted name > raw hex string.
+ * When a name is found, *ext_out is allocated and the pair carries an alias
+ * detail view (tappable on Stax/Flex, shown inline on Nano).
+ * The caller is responsible for freeing *ext_out (typically via
+ * APP_MEM_FREE_AND_NULL in the cleanup path).
+ *
+ * @param pair         Tag/value pair whose @p item is already set by the caller
+ * @param raw_addr     20-byte raw address to resolve
+ * @param display_addr Checksummed hex string; used as fallback value and as
+ *                     ENS alias explanation in the detail view
+ * @param ext_out      Extension pointer to allocate on match
+ * @return false on allocation failure, true otherwise
+ */
+static bool resolve_address_pair(nbgl_contentTagValue_t *pair,
+                                 const uint8_t *raw_addr,
+                                 const char *display_addr,
+                                 nbgl_contentValueExt_t **ext_out) {
+    uint64_t chain_id = get_tx_chain_id();
+    const char *display_name = NULL;
+    nbgl_contentValueAliasType_t alias_type = 0;
+    const char *alias_sub_name = NULL;
+    const char *alias_expl = NULL;
+
+#ifdef HAVE_ADDRESS_BOOK
+    const s_ab_contact *ab_contact = get_address_book_contact(chain_id, raw_addr);
+    if (ab_contact != NULL) {
+        display_name = ab_contact->contact_name;
+        alias_type = ADDRESS_BOOK_ALIAS;
+        alias_sub_name = (ab_contact->scope[0] != '\0') ? ab_contact->scope : NULL;
+    }
+    if (display_name == NULL)
+#endif  // HAVE_ADDRESS_BOOK
+    {
+        e_name_type type = TN_TYPE_ACCOUNT;
+        e_name_source source = TN_SOURCE_ENS;
+        const s_trusted_name *trusted_name =
+            get_trusted_name(1, &type, 1, &source, &chain_id, raw_addr);
+        if (trusted_name != NULL) {
+            display_name = trusted_name->name;
+            alias_type = ENS_ALIAS;
+            alias_expl = display_addr;  // shown as small info text in the detail view
+        }
+    }
+
+    if (display_name != NULL) {
+        if (APP_MEM_CALLOC((void **) ext_out, sizeof(**ext_out)) == false) {
+            return false;
+        }
+        pair->value = display_name;
+        (*ext_out)->aliasType = alias_type;
+        (*ext_out)->title = display_name;
+        (*ext_out)->fullValue = display_addr;
+        (*ext_out)->aliasSubName = alias_sub_name;
+        (*ext_out)->explanation = alias_expl;
+        pair->extension = *ext_out;
+        pair->aliasValue = true;
+    } else {
+        pair->value = display_addr;
+    }
+    return true;
+}
+
+/**
  * Retrieve the Tag/Value g_pairs to display
  *
  * @param[in] displayNetwork If true, the network name will be displayed
@@ -86,9 +158,16 @@ static bool setTagValuePairs(bool displayNetwork, bool fromPlugin) {
     // Setup data to display
     if (fromPlugin) {
         if (pluginType != PLUGIN_TYPE_EXTERNAL) {
+            // Display the From address
+            // ------------------------
             if (strings.common.fromAddress[0] != 0) {
                 g_pairs[nbPairs].item = "From";
-                g_pairs[nbPairs].value = strings.common.fromAddress;
+                if (!resolve_address_pair(&g_pairs[nbPairs],
+                                          strings.common.fromAddressRaw,
+                                          strings.common.fromAddress,
+                                          &from_extension)) {
+                    return false;
+                }
                 nbPairs++;
             }
         }
@@ -124,7 +203,12 @@ static bool setTagValuePairs(bool displayNetwork, bool fromPlugin) {
         // ------------------------
         if (strings.common.fromAddress[0] != 0) {
             g_pairs[nbPairs].item = "From";
-            g_pairs[nbPairs].value = strings.common.fromAddress;
+            if (!resolve_address_pair(&g_pairs[nbPairs],
+                                      strings.common.fromAddressRaw,
+                                      strings.common.fromAddress,
+                                      &from_extension)) {
+                return false;
+            }
             nbPairs++;
         }
 
@@ -140,31 +224,21 @@ static bool setTagValuePairs(bool displayNetwork, bool fromPlugin) {
 
         // Display the To address
         // ----------------------
+#if defined(HAVE_ADDRESS_BOOK) && defined(HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT)
+        {
+            const s_ab_contact *to =
+                get_address_book_contact(get_tx_chain_id(), tmpContent.txContent.destination);
+            g_pairs[nbPairs].item =
+                (to && to->type == AB_CONTACT_LEDGER_ACCOUNT) ? "To (self transfer)" : "To";
+        }
+#else
         g_pairs[nbPairs].item = "To";
-
-        uint64_t chain_id = get_tx_chain_id();
-        e_name_type type = TN_TYPE_ACCOUNT;
-        e_name_source source = TN_SOURCE_ENS;
-        const s_trusted_name *trusted_name;
-
-        if ((trusted_name = get_trusted_name(1,
-                                             &type,
-                                             1,
-                                             &source,
-                                             &chain_id,
-                                             tmpContent.txContent.destination)) != NULL) {
-            if (APP_MEM_CALLOC((void **) &extension, sizeof(*extension)) == false) {
-                return false;
-            }
-            g_pairs[nbPairs].value = trusted_name->name;
-            extension->aliasType = ENS_ALIAS;
-            extension->title = trusted_name->name;
-            extension->fullValue = strings.common.toAddress;
-            extension->explanation = strings.common.toAddress;
-            g_pairs[nbPairs].extension = extension;
-            g_pairs[nbPairs].aliasValue = true;
-        } else {
-            g_pairs[nbPairs].value = strings.common.toAddress;
+#endif  // HAVE_ADDRESS_BOOK && HAVE_ADDRESS_BOOK_LEDGER_ACCOUNT
+        if (!resolve_address_pair(&g_pairs[nbPairs],
+                                  tmpContent.txContent.destination,
+                                  strings.common.toAddress,
+                                  &extension)) {
+            return false;
         }
         nbPairs++;
 
@@ -317,7 +391,10 @@ static bool ux_init(bool fromPlugin, uint8_t title_len, uint8_t finish_len) {
     }
 
     // Retrieve the Tag/Value g_pairs to display
-    return setTagValuePairs(displayNetwork, fromPlugin);
+    if (!setTagValuePairs(displayNetwork, fromPlugin)) {
+        goto error;
+    }
+    return true;
 error:
     io_seproxyhal_send_status(SWO_INSUFFICIENT_MEMORY, 0, true, true);
     _cleanup();

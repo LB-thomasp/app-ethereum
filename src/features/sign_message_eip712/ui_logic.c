@@ -20,6 +20,9 @@
 #include "tx_ctx.h"  // g_parked_calldata
 #include "read.h"    // read_u64_be
 #include "token_info.h"
+#ifdef HAVE_ADDRESS_BOOK
+#include "handle_contacts.h"
+#endif  // HAVE_ADDRESS_BOOK
 
 #define N_OF_M_LENGTH 10  // enough to hold "nn of mm"
 
@@ -611,6 +614,22 @@ static bool ui_712_format_trusted_name(const uint8_t *data, uint8_t length) {
     if (length != ADDRESS_LENGTH) {
         return false;
     }
+#ifdef HAVE_ADDRESS_BOOK
+    // Address Book contacts take priority over Trusted Names for account addresses.
+    for (uint8_t i = 0; i < ui_ctx->tn_type_count; i++) {
+        if (ui_ctx->tn_types[i] == TN_TYPE_ACCOUNT) {
+            const s_ab_contact *ab_contact =
+                get_address_book_contact(eip712_context->chain_id, data);
+            if (ab_contact != NULL) {
+                strlcpy(strings.tmp.tmp, ab_contact->contact_name, sizeof(strings.tmp.tmp));
+                return true;
+            }
+            break;
+        }
+    }
+#endif  // HAVE_ADDRESS_BOOK
+    // Fall back to a Trusted Name; if none matches, strings.tmp.tmp retains the raw
+    // hex address already written by ui_712_format_addr().
     if ((trusted_name = get_trusted_name(ui_ctx->tn_type_count,
                                          ui_ctx->tn_types,
                                          ui_ctx->tn_source_count,
@@ -701,6 +720,18 @@ static bool handle_fallback_empty_calldata(const s_eip712_calldata_info *calldat
     const s_trusted_name *trusted_name;
 
     ui_712_set_title("To", 2);
+#ifdef HAVE_ADDRESS_BOOK
+    // Address Book contacts take priority over Trusted Names for the callee address.
+    {
+        const s_ab_contact *ab_contact =
+            get_address_book_contact(calldata_info->chain_id, calldata_info->callee);
+        if (ab_contact != NULL) {
+            ui_712_set_value(ab_contact->contact_name, strlen(ab_contact->contact_name));
+            return true;
+        }
+    }
+#endif  // HAVE_ADDRESS_BOOK
+    // Fall back to a Trusted Name, then to the raw checksummed hex address.
     if ((trusted_name = get_trusted_name(ARRAYLEN(types),
                                          types,
                                          ARRAYLEN(sources),

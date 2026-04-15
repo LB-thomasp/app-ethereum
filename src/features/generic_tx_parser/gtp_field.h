@@ -39,6 +39,7 @@ typedef enum {
     // Internal types — never sent via APDU.
     PARAM_TYPE_INTENT,     // marks a transaction-intent boundary in batch flows
     PARAM_TYPE_SEPARATOR,  // centered page break label emitted before each array element
+    PARAM_TYPE_ADDRESS_BOOK,
 } e_param_type;
 
 typedef enum {

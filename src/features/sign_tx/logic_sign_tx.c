@@ -330,6 +330,7 @@ __attribute__((noinline)) static uint16_t finalize_parsing_helper(const txContex
         goto end;
     }
 
+    memcpy(strings.common.fromAddressRaw, msg_sender, ADDRESS_LENGTH);
     error = address_to_string(msg_sender,
                               ADDRESS_LENGTH,
                               strings.common.fromAddress,

@@ -154,6 +154,7 @@ typedef enum {
 
 typedef struct txStringProperties_s {
     char fromAddress[ADDRESS_LENGTH_HEX_STR];
+    uint8_t fromAddressRaw[ADDRESS_LENGTH];
     char toAddress[ADDRESS_LENGTH_HEX_STR];
     char fullAmount[MAX_TICKER_LEN + 1 + 78 + 1];  // 2^256 is 78 digits long
     char maxFee[50];
