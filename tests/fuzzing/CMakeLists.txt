@@ -15,6 +15,9 @@ if(NOT DEFINED BOLOS_SDK)
   return()
 endif()
 
+# Make address_book headers available to all targets, including SDK sub-projects
+include_directories(${BOLOS_SDK}/app_features/address_book/include)
+
 add_subdirectory(${BOLOS_SDK}/fuzzing ${CMAKE_CURRENT_BINARY_DIR}/ledger-secure-sdk EXCLUDE_FROM_ALL)
 
 set(DEFINES FUZZ)
@@ -28,6 +31,8 @@ file(GLOB_RECURSE C_SOURCES
   ${CMAKE_SOURCE_DIR}/mock/*.c
   ${CMAKE_SOURCE_DIR}/src/fuzz_utils.c
 )
+file(GLOB AB_SDK_SOURCES ${BOLOS_SDK}/app_features/address_book/src/*.c)
+list(APPEND C_SOURCES ${AB_SDK_SOURCES})
 list(REMOVE_ITEM C_SOURCES
   ${APP_SRC}/main.c
   ${PLUGIN_SDK_SRC}/main.c
@@ -59,6 +64,7 @@ target_include_directories(
          ${APP_SRC}/features/provide_nft_information
          ${APP_SRC}/features/provide_gating
          ${APP_SRC}/features/provide_map_entry
+         ${APP_SRC}/features/address_book
          ${APP_SRC}/features/sign_message_eip712_common
          ${APP_SRC}/features/sign_message_eip712
          ${APP_SRC}/features/set_plugin
