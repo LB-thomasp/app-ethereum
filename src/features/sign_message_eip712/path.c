@@ -360,7 +360,7 @@ static bool path_update(bool skip_if_array, bool stop_at_array, bool do_typehash
         // check if we meet one of the given conditions
         if (((field_ptr == starting_field_ptr) && skip_if_array) ||
             ((field_ptr != starting_field_ptr) && stop_at_array)) {
-            if (field_ptr->type_is_array) {
+            if (field_ptr->array_level_count > 0) {
                 // Stop descent unless this field is the currently-iterated outer array.
                 // In that case we must descend to set up the new struct hash context.
                 // For any nested inner array we stop here and let path_new_array_depth
@@ -531,7 +531,7 @@ static void backup_path(void) {
         if ((field_ptr = path_backup_get_nth_field(path_backup->depth_count)) == NULL) {
             return;
         }
-        if (field_ptr->type_is_array) {
+        if (field_ptr->array_level_count > 0) {
             break;
         }
         path_backup->depth_count -= 1;
@@ -575,7 +575,7 @@ bool path_new_array_depth(const uint8_t *data, uint8_t length) {
             apdu_response_code = SWO_INCORRECT_DATA;
             return false;
         }
-        if (field_ptr->type_is_array) {
+        if (field_ptr->array_level_count > 0) {
             if (field_ptr->array_levels == NULL) {
                 apdu_response_code = SWO_INCORRECT_DATA;
                 return false;
@@ -791,7 +791,7 @@ bool path_exists_in_backup(const char *path, size_t length) {
         }
         offset += 1;
         if (((offset + 2) <= length) && (memcmp(path + offset, "[]", 2) == 0)) {
-            if (!field_ptr->type_is_array) {
+            if (field_ptr->array_level_count == 0) {
                 return false;
             }
             offset += 2;

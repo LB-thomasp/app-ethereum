@@ -66,7 +66,7 @@ static bool hash_filtering_path(cx_hash_t *hash_ctx, bool discarded, uint32_t *p
                 *path_crc = cx_crc32_update(*path_crc, key, strlen(key));
 
                 // array levels
-                if (field_ptr->type_is_array) {
+                if (field_ptr->array_level_count > 0) {
                     for (int j = 0; j < field_ptr->array_level_count; ++j) {
                         hash_nbytes((uint8_t *) ".[]", 3, hash_ctx);
                         *path_crc = cx_crc32_update(*path_crc, ".[]", 3);
@@ -268,7 +268,7 @@ static bool matches_backup_path(const char *path, uint8_t path_len, uint8_t *off
                 offset += strlen(key);
 
                 // array levels
-                if (field_ptr->type_is_array) {
+                if (field_ptr->array_level_count > 0) {
                     for (int j = 0; j < field_ptr->array_level_count; ++j) {
                         if (((offset + 3) > path_len) || (memcmp(path + offset, ".[]", 3) != 0)) {
                             return false;

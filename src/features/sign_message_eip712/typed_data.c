@@ -127,7 +127,8 @@ bool set_struct_name(uint8_t length, const uint8_t *name) {
 static bool set_struct_field_typedesc(s_struct_712_field *field,
                                       const uint8_t *data,
                                       uint8_t *data_idx,
-                                      uint8_t length) {
+                                      uint8_t length,
+                                      bool *is_array) {
     uint8_t typedesc;
 
     // copy TypeDesc
@@ -137,7 +138,7 @@ static bool set_struct_field_typedesc(s_struct_712_field *field,
         return false;
     }
     typedesc = data[(*data_idx)++];
-    field->type_is_array = typedesc & ARRAY_MASK;
+    *is_array = typedesc & ARRAY_MASK;
     field->type_has_size = typedesc & TYPESIZE_MASK;
     field->type = typedesc & TYPE_MASK;
     return true;
@@ -318,7 +319,8 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
         return false;
     }
 
-    if (!set_struct_field_typedesc(new_field, data, &data_idx, length)) {
+    bool is_array;
+    if (!set_struct_field_typedesc(new_field, data, &data_idx, length, &is_array)) {
         goto cleanup;
     }
 
@@ -339,7 +341,7 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
             goto cleanup;
         }
     }
-    if (new_field->type_is_array) {
+    if (is_array) {
         if (set_struct_field_array(new_field, data, &data_idx, length) == false) {
             goto cleanup;
         }

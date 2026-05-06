@@ -149,14 +149,17 @@ uint16_t handle_eip712_struct_impl(uint8_t p1, uint8_t p2, const uint8_t *cdata,
                     ui_712_field_flags_reset();
                 }
                 break;
+
             case P2_IMPL_FIELD:
                 if ((ret = field_hash(cdata, length, p1 != P1_COMPLETE))) {
                     reply_apdu = false;
                 }
                 break;
+
             case P2_IMPL_ARRAY:
                 ret = path_new_array_depth(cdata, length);
                 break;
+
             default:
                 PRINTF("Unknown P2 0x%x\n", p2);
                 apdu_response_code = SWO_WRONG_P1_P2;

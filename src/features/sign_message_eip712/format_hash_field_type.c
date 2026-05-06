@@ -101,7 +101,7 @@ bool format_hash_field_type(const s_struct_712_field *field_ptr, cx_hash_t *hash
     }
 
     // field type array levels
-    if (field_ptr->type_is_array) {
+    if (field_ptr->array_level_count > 0) {
         if (!format_hash_field_type_array_levels(field_ptr, hash_ctx)) {
             return false;
         }
