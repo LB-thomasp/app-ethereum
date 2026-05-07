@@ -33,21 +33,13 @@ typedef struct {
 
 typedef struct struct_712_field {
     flist_node_t _list;
-    // TypeDesc
     bool type_is_array : 1;
     bool type_has_size : 1;
     e_type type : 4;
-    // TypeNameLength
-    // TypeName
     char *type_name;
-    // TypeSize
     uint8_t type_size;
-    // ArrayLevelCount
     uint8_t array_level_count;
-    // ArrayLevels
     s_struct_712_field_array_level *array_levels;
-    // KeyNameLength
-    // KeyName
     char *key_name;
 } s_struct_712_field;
 
