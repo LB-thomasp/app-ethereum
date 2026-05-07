@@ -128,7 +128,8 @@ static bool set_struct_field_typedesc(s_struct_712_field *field,
                                       const uint8_t *data,
                                       uint8_t *data_idx,
                                       uint8_t length,
-                                      bool *is_array) {
+                                      bool *is_array,
+                                      bool *has_size) {
     uint8_t typedesc;
 
     // copy TypeDesc
@@ -139,7 +140,7 @@ static bool set_struct_field_typedesc(s_struct_712_field *field,
     }
     typedesc = data[(*data_idx)++];
     *is_array = typedesc & ARRAY_MASK;
-    field->type_has_size = typedesc & TYPESIZE_MASK;
+    *has_size = typedesc & TYPESIZE_MASK;
     field->type = typedesc & TYPE_MASK;
     return true;
 }
@@ -320,12 +321,13 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
     }
 
     bool is_array;
-    if (!set_struct_field_typedesc(new_field, data, &data_idx, length, &is_array)) {
+    bool has_size;
+    if (!set_struct_field_typedesc(new_field, data, &data_idx, length, &is_array, &has_size)) {
         goto cleanup;
     }
 
     // check TypeSize flag in TypeDesc
-    if (new_field->type_has_size) {
+    if (has_size) {
         // TYPESIZE and TYPE_CUSTOM are mutually exclusive
         if (new_field->type == TYPE_CUSTOM) {
             apdu_response_code = SWO_INCORRECT_DATA;

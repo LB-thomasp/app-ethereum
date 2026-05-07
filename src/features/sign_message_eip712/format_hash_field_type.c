@@ -94,10 +94,16 @@ bool format_hash_field_type(const s_struct_712_field *field_ptr, cx_hash_t *hash
     hash_nbytes((uint8_t *) name, strlen(name), hash_ctx);
 
     // field type size
-    if (field_ptr->type_has_size) {
-        if (!format_hash_field_type_size(field_ptr, hash_ctx)) {
-            return false;
-        }
+    switch (field_ptr->type) {
+        case TYPE_SOL_INT:
+        case TYPE_SOL_UINT:
+        case TYPE_SOL_BYTES_FIX:
+            if (!format_hash_field_type_size(field_ptr, hash_ctx)) {
+                return false;
+            }
+            break;
+        default:
+            break;
     }
 
     // field type array levels

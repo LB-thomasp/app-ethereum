@@ -33,7 +33,6 @@ typedef struct {
 
 typedef struct struct_712_field {
     flist_node_t _list;
-    bool type_has_size : 1;
     e_type type : 4;
     char *type_name;
     uint8_t type_size;
