@@ -54,7 +54,7 @@ static const void *get_nth_field_from(const s_path *path, uint8_t *fields_count_
                 return NULL;
             }
         }
-        if (field_ptr->type == TYPE_CUSTOM) {
+        if (field_ptr->type == TYPE_STRUCT) {
             typename = get_struct_field_typename(field_ptr);
             if ((struct_ptr = get_structn(typename, strlen(typename))) == NULL) {
                 return NULL;
@@ -356,7 +356,7 @@ static bool path_update(bool skip_if_array, bool stop_at_array, bool do_typehash
         return false;
     }
     field_ptr = starting_field_ptr;
-    while (field_ptr->type == TYPE_CUSTOM) {
+    while (field_ptr->type == TYPE_STRUCT) {
         // check if we meet one of the given conditions
         if (((field_ptr == starting_field_ptr) && skip_if_array) ||
             ((field_ptr != starting_field_ptr) && stop_at_array)) {
@@ -598,7 +598,7 @@ bool path_new_array_depth(const uint8_t *data, uint8_t length) {
         PRINTF("Did not find a matching array type.\n");
         return false;
     }
-    is_custom = field_ptr->type == TYPE_CUSTOM;
+    is_custom = field_ptr->type == TYPE_STRUCT;
     if (push_new_hash_depth(!is_custom) == false) {
         return false;
     }

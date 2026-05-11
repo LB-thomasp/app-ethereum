@@ -21,7 +21,7 @@ bool typed_data_init(void) {
 
 // to be used as a \ref f_list_node_del
 static void delete_field(s_struct_712_field *f) {
-    if (f->type == TYPE_CUSTOM) {
+    if (f->type == TYPE_STRUCT) {
         APP_MEM_FREE(f->struct_name);
     }
     APP_MEM_FREE(f->array_levels);
@@ -50,7 +50,7 @@ const char *get_struct_field_typename(const s_struct_712_field *field_ptr) {
     if (field_ptr == NULL) {
         return NULL;
     }
-    if (field_ptr->type == TYPE_CUSTOM) {
+    if (field_ptr->type == TYPE_STRUCT) {
         return field_ptr->struct_name;
     }
     return get_struct_field_sol_typename(field_ptr);
@@ -330,8 +330,8 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
 
     // check TypeSize flag in TypeDesc
     if (has_size) {
-        // TYPESIZE and TYPE_CUSTOM are mutually exclusive
-        if (new_field->type == TYPE_CUSTOM) {
+        // TYPESIZE and TYPE_STRUCT are mutually exclusive
+        if (new_field->type == TYPE_STRUCT) {
             apdu_response_code = SWO_INCORRECT_DATA;
             goto cleanup;
         }
@@ -340,7 +340,7 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
             goto cleanup;
         }
 
-    } else if (new_field->type == TYPE_CUSTOM) {
+    } else if (new_field->type == TYPE_STRUCT) {
         if (set_struct_field_custom_typename(new_field, data, &data_idx, length) == false) {
             goto cleanup;
         }

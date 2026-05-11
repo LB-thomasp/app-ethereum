@@ -92,7 +92,7 @@ static bool add_dep_if_new(s_struct_dep **first_dep, const s_struct_712 *struct_
 }
 
 /**
- * Scan all fields of a struct and add any unknown TYPE_CUSTOM dependencies
+ * Scan all fields of a struct and add any unknown TYPE_STRUCT dependencies
  *
  * @param[in,out] first_dep pointer to the head of the dependency list
  * @param[in] struct_ptr pointer to the struct whose fields are scanned
@@ -105,7 +105,7 @@ static bool collect_direct_deps(s_struct_dep **first_dep, const s_struct_712 *st
 
     for (field_ptr = struct_ptr->fields; field_ptr != NULL;
          field_ptr = (s_struct_712_field *) ((flist_node_t *) field_ptr)->next) {
-        if (field_ptr->type == TYPE_CUSTOM) {
+        if (field_ptr->type == TYPE_STRUCT) {
             dep_name = get_struct_field_typename(field_ptr);
             if ((dep = get_structn(dep_name, strlen(dep_name))) == NULL) {
                 PRINTF("Error: could not find EIP-712 dependency struct \"%s\" during type_hash\n",

@@ -14,7 +14,7 @@ typedef enum { ARRAY_DYNAMIC = 0, ARRAY_FIXED_SIZE, ARRAY_TYPES_COUNT } e_array_
 
 typedef enum {
     // contract defined struct
-    TYPE_CUSTOM = 0,
+    TYPE_STRUCT = 0,
     // native types
     TYPE_SOL_INT,
     TYPE_SOL_UINT,

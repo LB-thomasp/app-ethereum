@@ -95,7 +95,7 @@ static const uint8_t *field_hash_finalize_static(const s_struct_712_field *field
         case TYPE_SOL_BOOL:
             value = encode_boolean((bool *) data, data_length);
             break;
-        case TYPE_CUSTOM:
+        case TYPE_STRUCT:
         default:
             apdu_response_code = SWO_INCORRECT_DATA;
             PRINTF("Unknown solidity type!\n");
