@@ -64,13 +64,6 @@ typedef struct {
 
 bool ui_712_init(void);
 void ui_712_deinit(void);
-bool ui_712_review_struct(const s_struct_712 *struct_ptr);
-bool ui_712_review_network(const uint64_t *chain_id);
-bool ui_712_feed_to_display(const s_struct_712_field *field_ptr,
-                            const uint8_t *data,
-                            uint8_t length,
-                            const uint16_t *complete_length,
-                            bool last);
 void ui_712_end_sign(void);
 void ui_712_approve(void);
 void ui_712_reject(void);
@@ -78,7 +71,7 @@ void ui_712_set_intent(void);
 void ui_712_set_title(const char *str, size_t length);
 void ui_712_set_value(const char *str, size_t length);
 bool ui_712_message_hash(void);
-bool ui_712_redraw_generic_step(void);
+bool ui_712_continue_or_finish(void);
 void ui_712_flag_field(bool show,
                        bool name_provided,
                        bool token_join,
@@ -86,13 +79,11 @@ void ui_712_flag_field(bool show,
                        bool trusted_name,
                        bool calldata);
 void ui_712_field_flags_reset(void);
-void ui_712_finalize_field(void);
 void ui_712_set_filtering_mode(e_eip712_filtering_mode mode);
 e_eip712_filtering_mode ui_712_get_filtering_mode(void);
 void ui_712_set_filters_count(uint8_t count);
 uint8_t ui_712_remaining_filters(void);
 bool ui_712_message_info_received(void);
-void ui_712_queue_struct_to_review(void);
 void ui_712_token_join_prepare_addr_check(uint8_t id);
 bool ui_712_token_join_prepare_amount(uint8_t id, const char *name, uint8_t name_length);
 bool ui_712_set_amount_join_token_addr(const uint8_t *address);

@@ -66,7 +66,6 @@ typedef struct {
     uint8_t filters_to_process;
     bool message_info_received;
     uint8_t field_flags;
-    uint8_t structs_to_review;
     s_amount_context amount;
     s_filter_crc *filters_crc;
     char *discarded_path;
@@ -99,32 +98,6 @@ static void delete_amount_join(s_amount_join *join) {
 }
 
 /**
- * Called to fetch the next field if they have not all been processed yet
- *
- * Also handles the special "Review struct" screen of the verbose mode
- *
- * @return the next field state
- */
-static bool ui_712_next_field(void) {
-    bool ret = false;
-
-    if (ui_ctx == NULL) {
-        apdu_response_code = SWO_INCORRECT_DATA;
-    } else {
-        if (ui_ctx->structs_to_review > 0) {
-            ret = ui_712_review_struct(impl_get_nth_struct_to_last(ui_ctx->structs_to_review));
-            ui_ctx->structs_to_review -= 1;
-        } else if (!ui_ctx->end_reached) {
-            handle_eip712_return_code(true);
-            // So that later when we append to them, we start from an empty string
-            explicit_bzero(&strings, sizeof(strings));
-            ret = true;
-        }
-    }
-    return ret;
-}
-
-/**
  * Checks on the UI context to determine if the next EIP 712 field should be shown
  *
  * @return whether the next field should be shown
@@ -146,16 +119,6 @@ static bool ui_712_field_shown(void) {
         }
     }
     return ret;
-}
-
-/**
- * Skip the field if needed and reset its UI flags
- */
-void ui_712_finalize_field(void) {
-    if (!ui_712_field_shown()) {
-        ui_712_next_field();
-    }
-    ui_712_field_flags_reset();
 }
 
 /**
@@ -249,15 +212,15 @@ void ui_712_set_value(const char *str, size_t length) {
 }
 
 /**
- * Redraw the dynamic UI step that shows EIP712 information
+ * Send APDU reply continuing the filtering flow, or trigger final review if end reached.
+ * Called after a filtering APDU has added its pairs to the list.
  *
  * @return whether it was successful or not
  */
-bool ui_712_redraw_generic_step(void) {
-    if (appState != APP_STATE_SIGNING_EIP712) {  // Initialize if it is not already
+bool ui_712_continue_or_finish(void) {
+    if (appState != APP_STATE_SIGNING_EIP712) {
         if ((ui_ctx->filtering_mode == EIP712_FILTERING_BASIC) && !N_storage.dataAllowed &&
             !N_storage.verbose_eip712) {
-            // Both settings not enabled => Error
             ui_error_blind_signing();
             apdu_response_code = SWO_INCORRECT_DATA;
             eip712_context->go_home_on_failure = false;
@@ -269,53 +232,17 @@ bool ui_712_redraw_generic_step(void) {
         }
         handle_eip712_return_code(true);
     } else {
-        if (ui_712_next_field() == false) {
+        if (ui_ctx->end_reached) {
             apdu_response_code = ui_sign_712(ui_ctx->filtering_mode);
             if (apdu_response_code != SWO_SUCCESS) {
                 return false;
             }
+        } else {
+            handle_eip712_return_code(true);
+            explicit_bzero(&strings, sizeof(strings));
         }
     }
     return true;
-}
-
-/**
- * Used to notify of a new struct to review
- *
- * @param[in] struct_ptr pointer to the structure to be shown
- * @return whether it was successful or not
- */
-bool ui_712_review_struct(const s_struct_712 *struct_ptr) {
-    const char *struct_name;
-    const char *title = "Review struct";
-
-    if (ui_ctx == NULL) {
-        return false;
-    }
-
-    ui_712_set_title(title, strlen(title));
-    if ((struct_name = struct_ptr->name) != NULL) {
-        ui_712_set_value(struct_name, strlen(struct_name));
-    }
-    return ui_712_redraw_generic_step();
-}
-
-bool ui_712_review_network(const uint64_t *chain_id) {
-    const char *title = "Network";
-    const char *buf;
-
-    if (*chain_id == g_chain_config->chain_id) {
-        return true;
-    }
-    ui_712_set_title(title, strlen(title));
-    if ((buf = get_network_name_from_chain_id(chain_id)) == NULL) {
-        if (!format_u64(strings.tmp.tmp, NETWORK_STRING_MAX_SIZE, *chain_id)) {
-            return false;
-        }
-        buf = strings.tmp.tmp;
-    }
-    ui_712_set_value(buf, strlen(buf));
-    return ui_712_redraw_generic_step();
 }
 
 /**
@@ -336,7 +263,7 @@ bool ui_712_message_hash(void) {
         ui_712_set_value(NULL, 0);
     }
     ui_ctx->end_reached = true;
-    return ui_712_redraw_generic_step();
+    return ui_712_continue_or_finish();
 }
 
 /**
@@ -875,118 +802,9 @@ static bool update_calldata(const uint8_t *data,
 }
 
 /**
- * Formats and feeds the given input data to the display buffers
- *
- * @param[in] field_ptr pointer to the new struct field
- * @param[in] data pointer to the field's raw value
- * @param[in] length field's raw value byte-length
- * @param[in] complete_length pointer to complete length if first chunk, \ref NULL otherwise
- * @param[in] last if this is the last chunk
- */
-bool ui_712_feed_to_display(const s_struct_712_field *field_ptr,
-                            const uint8_t *data,
-                            uint8_t length,
-                            const uint16_t *complete_length,
-                            bool last) {
-    bool first = complete_length != NULL;
-
-    if (ui_ctx == NULL) {
-        apdu_response_code = SWO_INCORRECT_DATA;
-        return false;
-    }
-
-    if (first && (strlen(strings.tmp.tmp) > 0)) {
-        return false;
-    }
-    // Value
-    if (ui_712_field_shown()) {
-        switch (field_ptr->type) {
-            case TYPE_SOL_STRING:
-                ui_712_format_str(data, length, last);
-                break;
-            case TYPE_SOL_ADDRESS:
-                if (ui_712_format_addr(data, length, first) == false) {
-                    return false;
-                }
-                break;
-            case TYPE_SOL_BOOL:
-                if (ui_712_format_bool(data, length, first) == false) {
-                    return false;
-                }
-                break;
-            case TYPE_SOL_BYTES_FIX:
-            case TYPE_SOL_BYTES_DYN:
-                if (ui_712_format_bytes(data, length, first, last) == false) {
-                    return false;
-                }
-                break;
-            case TYPE_SOL_INT:
-                if (ui_712_format_int(data, length, first, field_ptr) == false) {
-                    return false;
-                }
-                break;
-            case TYPE_SOL_UINT:
-                if (ui_712_format_uint(data, length, first) == false) {
-                    return false;
-                }
-                break;
-            default:
-                PRINTF("Unhandled type\n");
-                return false;
-        }
-    }
-
-    if (ui_ctx->field_flags & UI_712_AMOUNT_JOIN) {
-        s_amount_join *amount_join = get_amount_join(ui_ctx->amount.current_id);
-        if (amount_join == NULL) {
-            return false;
-        }
-
-        if (!update_amount_join(amount_join, data, length)) {
-            return false;
-        }
-
-        if (amount_join->flags == (AMOUNT_JOIN_FLAG_TOKEN | AMOUNT_JOIN_FLAG_VALUE)) {
-            if (!ui_712_format_amount_join(amount_join)) {
-                return false;
-            }
-        }
-    }
-
-    if (ui_ctx->field_flags & UI_712_DATETIME) {
-        if (!ui_712_format_datetime(data, length, field_ptr)) {
-            return false;
-        }
-    }
-
-    if (ui_ctx->field_flags & UI_712_TRUSTED_NAME) {
-        if (!ui_712_format_trusted_name(data, length)) {
-            return false;
-        }
-    }
-
-    if (ui_ctx->field_flags & UI_712_CALLDATA) {
-        if (!update_calldata(data, length, complete_length, last)) {
-            return false;
-        }
-    }
-
-    // Check if this field is supposed to be displayed
-    if (last && ui_712_field_shown()) {
-        // This is the last chunk, we can now set the value
-        ui_712_set_value(NULL, 0);
-
-        return ui_712_redraw_generic_step();
-    }
-    return true;
-}
-
-/**
  * Accumulate a fully-received leaf value into the UI display system.
  * Used in the value-tree architecture where impl APDUs never trigger display.
- *
- * Mirrors ui_712_feed_to_display() but skips ui_712_redraw_generic_step() and
- * resets field flags at the end. Only runs in EIP712_FILTERING_FULL mode.
+ * Runs only in EIP712_FILTERING_FULL mode. Resets field flags when done.
  */
 bool ui_712_accumulate_value(const s_struct_712_field *field_ptr,
                              const uint8_t *data,
@@ -1234,21 +1052,6 @@ bool ui_712_message_info_received(void) {
  */
 void ui_712_field_flags_reset(void) {
     ui_ctx->field_flags = 0;
-}
-
-/**
- * Add a struct to the UI review queue
- *
- * Makes it so the user will have to go through a "Review struct" screen
- */
-void ui_712_queue_struct_to_review(void) {
-#ifdef SCREEN_SIZE_WALLET
-    if (true) {
-#else
-    if (N_storage.verbose_eip712) {
-#endif
-        ui_ctx->structs_to_review += 1;
-    }
 }
 
 void ui_712_token_join_prepare_addr_check(uint8_t id) {

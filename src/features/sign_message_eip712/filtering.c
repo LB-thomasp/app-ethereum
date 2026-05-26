@@ -235,11 +235,8 @@ bool filtering_message_info(const uint8_t *payload, uint8_t length) {
         ui_712_set_title("Contract", 8);
         ui_712_set_value(name, name_len);
         // In the value-tree architecture the filter APDU for the message arrives while the
-        // root type is still ROOT_DOMAIN (message impl not yet set), so the old
-        // ROOT_MESSAGE guard in the streaming path never fires.  Add the Network
-        // pair here, before ui_712_redraw_generic_step(), so it appears in the
-        // review right after the Contract pair.  Skip if chain matches the app's
-        // own chain (same behaviour as ui_712_review_network).
+        // root type is still ROOT_DOMAIN (message impl not yet set). Add the Network pair
+        // after the Contract pair so it appears in the review. Skip if chain matches the app's own.
         if (ui_712_get_filtering_mode() == EIP712_FILTERING_FULL &&
             impl_get_domain_chain_id() != g_chain_config->chain_id) {
             uint64_t domain_chain_id = impl_get_domain_chain_id();
@@ -254,7 +251,7 @@ bool filtering_message_info(const uint8_t *payload, uint8_t length) {
                 ui_712_set_value(NULL, 0);
             }
         }
-        return ui_712_redraw_generic_step();
+        return ui_712_continue_or_finish();
     }
     return true;
 }
