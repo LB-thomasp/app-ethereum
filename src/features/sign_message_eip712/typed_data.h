@@ -4,12 +4,6 @@
 #include <stdbool.h>
 #include "lists.h"
 
-// TypeDesc masks
-#define TYPE_MASK     (0xF)
-#define ARRAY_MASK    (1 << 7)
-#define TYPESIZE_MASK (1 << 6)
-#define TYPENAME_ENUM (0xF)
-
 typedef enum { ARRAY_DYNAMIC = 0, ARRAY_FIXED_SIZE, ARRAY_TYPES_COUNT } e_array_type;
 
 typedef enum {

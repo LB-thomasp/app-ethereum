@@ -119,6 +119,12 @@ bool set_struct_name(uint8_t length, const uint8_t *name) {
     return true;
 }
 
+// TypeDesc masks
+#define TYPE_MASK     (0xF)
+#define ARRAY_MASK    (1 << 7)
+#define TYPESIZE_MASK (1 << 6)
+#define TYPENAME_ENUM (0xF)
+
 /**
  * Set struct field TypeDesc
  *
