@@ -8,7 +8,6 @@
 #include "shared_context.h"  // reset_app_context
 #include "common_ui.h"       // ui_idle
 
-e_struct_init struct_state = NOT_INITIALIZED;
 s_eip712_context *eip712_context = NULL;
 
 /**
@@ -41,8 +40,6 @@ bool eip712_context_init(void) {
     }
 
     eip712_context->go_home_on_failure = true;
-
-    struct_state = NOT_INITIALIZED;
 
     return true;
 }

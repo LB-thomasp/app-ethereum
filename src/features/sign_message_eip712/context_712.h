@@ -14,6 +14,3 @@ extern s_eip712_context *eip712_context;
 
 bool eip712_context_init(void);
 void eip712_context_deinit(void);
-
-typedef enum { NOT_INITIALIZED, INITIALIZED, DEFINED } e_struct_init;
-extern e_struct_init struct_state;

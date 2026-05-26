@@ -90,7 +90,7 @@ uint16_t handle_eip712_struct_def(uint8_t p2, const uint8_t *cdata, uint8_t leng
     if (eip712_context == NULL) {
         ret = eip712_context_init();
     }
-    if (struct_state == DEFINED) {
+    if (impl_get_root_type() != ROOT_NONE) {
         ret = false;
     }
 
@@ -131,7 +131,6 @@ uint16_t handle_eip712_struct_impl(uint8_t p1, uint8_t p2, const uint8_t *cdata,
             case P2_IMPL_NAME:
                 ret = impl_set_root((char *) cdata, length);
                 if (ret) {
-                    struct_state = DEFINED;
                     ui_712_field_flags_reset();
                 }
                 break;
@@ -196,7 +195,6 @@ uint16_t handle_eip712_filtering(uint8_t p1, uint8_t p2, const uint8_t *cdata, u
                     // covered. On hash-compute failure, both state changes
                     // are skipped so the activate can be retried.
                     ui_712_set_filtering_mode(EIP712_FILTERING_FULL);
-                    struct_state = DEFINED;
                 }
             }
             forget_known_assets();

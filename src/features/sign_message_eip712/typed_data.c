@@ -117,7 +117,6 @@ bool set_struct_name(uint8_t length, const uint8_t *name) {
     }
     new_struct->name[length] = '\0';
     memmove(new_struct->name, name, length);
-    struct_state = INITIALIZED;
 
     flist_push_back((flist_node_t **) &g_structs, (flist_node_t *) new_struct);
     return true;
@@ -317,11 +316,6 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
         apdu_response_code = SWO_INCORRECT_DATA;
         return false;
     } else if (g_structs == NULL) {
-        apdu_response_code = SWO_INCORRECT_DATA;
-        return false;
-    }
-
-    if (struct_state == NOT_INITIALIZED) {
         apdu_response_code = SWO_INCORRECT_DATA;
         return false;
     }
