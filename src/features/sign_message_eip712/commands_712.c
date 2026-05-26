@@ -187,7 +187,7 @@ uint16_t handle_eip712_filtering(uint8_t p1, uint8_t p2, const uint8_t *cdata, u
     switch (p2) {
         case P2_FILT_ACTIVATE:
             if (!N_storage.verbose_eip712) {
-                ret = compute_schema_hash();
+                ret = compute_schema_hash(eip712_context->schema_hash);
                 if (ret) {
                     // Switch to filtering mode and lock the type system in
                     // one atomic step: a host cannot append struct

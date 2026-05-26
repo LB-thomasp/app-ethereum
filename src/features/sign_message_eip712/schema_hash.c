@@ -2,7 +2,6 @@
 #include "hash_bytes.h"
 #include "typed_data.h"
 #include "format_hash_field_type.h"
-#include "context_712.h"
 
 // the SDK does not define a SHA-224 type, define it here so it's easier
 // to understand in the code
@@ -17,7 +16,7 @@ typedef cx_sha256_t cx_sha224_t;
  *
  * @return whether the schema hash was successful or not
  */
-bool compute_schema_hash(void) {
+bool compute_schema_hash(uint8_t hash[CX_SHA224_SIZE]) {
     const s_struct_712 *struct_ptr;
     const s_struct_712_field *field_ptr;
     cx_sha224_t hash_ctx;
@@ -56,11 +55,5 @@ bool compute_schema_hash(void) {
     }
     hash_byte('}', (cx_hash_t *) &hash_ctx);
 
-    // copy hash into context struct
-    if (finalize_hash((cx_hash_t *) &hash_ctx,
-                      eip712_context->schema_hash,
-                      sizeof(eip712_context->schema_hash)) != true) {
-        return false;
-    }
-    return true;
+    return finalize_hash((cx_hash_t *) &hash_ctx, hash, CX_SHA224_SIZE);
 }
