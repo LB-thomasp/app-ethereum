@@ -89,7 +89,6 @@ bool impl_new_array(size_t count);
 const s_struct_712_value *impl_add_field(const uint8_t *data, size_t length, bool more);
 bool impl_is_complete(void);
 bool impl_hash_pass(void);
-void impl_deinit(void);
 
 e_root_type impl_get_root_type(void);
 const s_struct_712_field *impl_get_current_field(void);

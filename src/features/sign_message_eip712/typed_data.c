@@ -39,6 +39,9 @@ static void delete_struct(s_struct_712 *s) {
     APP_MEM_FREE(s);
 }
 
+// forward declaration
+static void impl_deinit(void);
+
 void typed_data_deinit(void) {
     impl_deinit();
     flist_clear((flist_node_t **) &g_structs, (f_list_node_del) &delete_struct);
@@ -512,7 +515,7 @@ static void delete_value(s_struct_712_value *v) {
     APP_MEM_FREE(v);
 }
 
-void impl_deinit(void) {
+static void impl_deinit(void) {
     if (g_impl.domain != NULL) {
         delete_value(g_impl.domain);
         g_impl.domain = NULL;
