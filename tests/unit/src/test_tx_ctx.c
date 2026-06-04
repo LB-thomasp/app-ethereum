@@ -40,6 +40,7 @@
 #include "tx_ctx.h"
 #include "gtp_field_table.h"
 #include "trusted_name.h"
+#include "address_name_lookup.h"
 #include "shared_context.h"
 
 // =============================================================================
@@ -70,6 +71,37 @@ void *get_current_calldata_info(void) {
 bool calldata_info_all_received(const void *info) {
     (void) info;
     return false;
+}
+// Address-name resolution — reached only by the display path our tests skip.
+bool __wrap_get_address_display_name(const uint8_t *addr,
+                                     uint64_t chain_id,
+                                     uint8_t type_count,
+                                     const e_name_type *types,
+                                     uint8_t source_count,
+                                     const e_name_source *sources,
+                                     char *buf,
+                                     size_t buf_size,
+                                     e_addr_name_source *name_source_out,
+                                     const void **extra_data_out) {
+    (void) addr;
+    (void) chain_id;
+    (void) type_count;
+    (void) types;
+    (void) source_count;
+    (void) sources;
+    (void) addr;
+    // Mimic the production RAW fallback: always resolves, writing a
+    // placeholder display string and reporting the RAW source.
+    if (buf != NULL && buf_size > 0) {
+        buf[0] = '\0';
+    }
+    if (name_source_out != NULL) {
+        *name_source_out = ADDR_NAME_FROM_RAW;
+    }
+    if (extra_data_out != NULL) {
+        *extra_data_out = NULL;
+    }
+    return true;
 }
 
 bool __wrap_get_public_key(uint8_t *buf, uint8_t size) {

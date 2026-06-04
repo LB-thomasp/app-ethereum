@@ -22,6 +22,7 @@
 
 // Headers for mocked functions
 #include "trusted_name.h"
+#include "address_name_lookup.h"
 #include "utils.h"
 #include "get_public_key.h"
 #include "tx_ctx.h"
@@ -97,6 +98,36 @@ const s_trusted_name *__wrap_get_trusted_name(uint8_t type_count,
     check_expected_ptr(addr);
 
     return (const s_trusted_name *) mock();
+}
+
+/**
+ * @brief Mock implementation of get_address_display_name
+ *
+ * Delegates to the existing get_trusted_name mock so that the 8 existing tests
+ * that set expectations on __wrap_get_trusted_name continue to work unchanged.
+ */
+bool __wrap_get_address_display_name(const uint8_t *addr,
+                                     uint64_t chain_id,
+                                     uint8_t type_count,
+                                     const e_name_type *types,
+                                     uint8_t source_count,
+                                     const e_name_source *sources,
+                                     char *buf,
+                                     size_t buf_size,
+                                     e_addr_name_source *name_source_out,
+                                     const void **extra_data_out) {
+    const s_trusted_name *tname =
+        __wrap_get_trusted_name(type_count, types, source_count, sources, &chain_id, addr);
+    if (tname != NULL) {
+        strlcpy(buf, tname->name, buf_size);
+        if (name_source_out != NULL) *name_source_out = ADDR_NAME_FROM_TRUSTED_NAME;
+        if (extra_data_out != NULL) *extra_data_out = tname;
+    } else {
+        getEthDisplayableAddress(addr, buf, buf_size, chain_id);
+        if (name_source_out != NULL) *name_source_out = ADDR_NAME_FROM_RAW;
+        if (extra_data_out != NULL) *extra_data_out = NULL;
+    }
+    return true;
 }
 
 /**

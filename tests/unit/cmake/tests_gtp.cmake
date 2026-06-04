@@ -31,6 +31,7 @@ add_eth_unit_test(test_param_trusted_name
     ${PLUGIN_DIR}/common_utils.c
   WRAPS
     get_trusted_name
+    get_address_display_name
     get_public_key
     get_current_tx_chain_id
     add_to_field_table
@@ -339,6 +340,7 @@ add_eth_unit_test(test_tx_ctx
     ${APP_DIR}/features/get_public_key
   WRAPS
     get_public_key
+    get_address_display_name
     finalize_hash
     ui_gcs_cleanup
     delete_tx_info
