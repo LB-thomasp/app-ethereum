@@ -169,18 +169,11 @@ static void delete_struct_dep(s_struct_dep *sdep) {
     APP_MEM_FREE(sdep);
 }
 
-/**
- * Encode the structure's type and hash it
- *
- * @param[in] struct_name name of the given struct
- * @param[in] struct_name_length length of the name of the given struct
- * @param[out] hash_buf buffer containing the resulting type_hash
- * @return whether the type_hash was successful or not
- */
-bool type_hash(const char *struct_name, const uint8_t struct_name_length, uint8_t *hash_buf) {
+static bool type_hash_internal(const char *struct_name,
+                               const uint8_t struct_name_length,
+                               uint8_t *hash_buf,
+                               s_struct_dep **deps) {
     const void *struct_ptr;
-    s_struct_dep *deps = NULL;
-    bool ret = false;
 
     if ((struct_ptr = get_structn(struct_name, struct_name_length)) == NULL) {
         PRINTF("Error: could not find EIP-712 struct \"");
@@ -193,27 +186,41 @@ bool type_hash(const char *struct_name, const uint8_t struct_name_length, uint8_
     }
     // get_struct_dependencies may populate `deps` partially before failing;
     // every exit path past this point must release the list.
-    if (!get_struct_dependencies(&deps, struct_ptr)) {
-        goto end;
+    if (!get_struct_dependencies(deps, struct_ptr)) {
+        return false;
     }
-    flist_sort((flist_node_t **) &deps, (f_list_node_cmp) &compare_struct_deps);
+    flist_sort((flist_node_t **) deps, (f_list_node_cmp) &compare_struct_deps);
     if (encode_and_hash_type(struct_ptr) == false) {
-        goto end;
+        return false;
     }
     // loop over each struct and generate string
-    for (const s_struct_dep *tmp = deps; tmp != NULL;
+    for (const s_struct_dep *tmp = *deps; tmp != NULL;
          tmp = (s_struct_dep *) ((flist_node_t *) tmp)->next) {
         if (encode_and_hash_type(tmp->s) == false) {
-            goto end;
+            return false;
         }
     }
 
     // copy hash into memory
     if (finalize_hash((cx_hash_t *) &global_sha3, hash_buf, KECCAK256_HASH_BYTESIZE) != true) {
-        goto end;
+        return false;
     }
-    ret = true;
-end:
+    return true;
+}
+
+/**
+ * Encode the structure's type and hash it
+ *
+ * @param[in] struct_name name of the given struct
+ * @param[in] struct_name_length length of the name of the given struct
+ * @param[out] hash_buf buffer containing the resulting type_hash
+ * @return whether the type_hash was successful or not
+ */
+bool type_hash(const char *struct_name, const uint8_t struct_name_length, uint8_t *hash_buf) {
+    s_struct_dep *deps = NULL;
+    bool ret;
+
+    ret = type_hash_internal(struct_name, struct_name_length, hash_buf, &deps);
     flist_clear((flist_node_t **) &deps, (f_list_node_del) &delete_struct_dep);
     return ret;
 }

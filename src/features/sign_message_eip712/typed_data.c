@@ -305,14 +305,10 @@ static bool set_struct_field_keyname(s_struct_712_field *field,
     return true;
 }
 
-/**
- * Set struct field
- *
- * @param[in] length data length
- * @param[in] data the field data
- * @return whether it was successful
- */
-bool set_struct_field(uint8_t length, const uint8_t *data) {
+static bool set_struct_field_internal(s_struct_712_field **new_field_ptr,
+                                      uint8_t length,
+                                      const uint8_t *data) {
+    s_struct_712_field *new_field;
     uint8_t data_idx = 0;
 
     if ((data == NULL) || (length == 0)) {
@@ -323,16 +319,17 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
         return false;
     }
 
-    s_struct_712_field *new_field = NULL;
-    if (APP_MEM_CALLOC((void **) &new_field, sizeof(*new_field)) == false) {
+    if ((new_field = APP_MEM_ALLOC(sizeof(*new_field))) == NULL) {
         apdu_response_code = SWO_INSUFFICIENT_MEMORY;
         return false;
     }
+    *new_field_ptr = new_field;
+    explicit_bzero(new_field, sizeof(*new_field));
 
     bool is_array;
     bool has_size;
     if (!set_struct_field_typedesc(new_field, data, &data_idx, length, &is_array, &has_size)) {
-        goto cleanup;
+        return false;
     }
 
     // check TypeSize flag in TypeDesc
@@ -340,26 +337,26 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
         // TYPESIZE and TYPE_STRUCT are mutually exclusive
         if (new_field->type == TYPE_STRUCT) {
             apdu_response_code = SWO_INCORRECT_DATA;
-            goto cleanup;
+            return false;
         }
 
         if (set_struct_field_typesize(new_field, data, &data_idx, length) == false) {
-            goto cleanup;
+            return false;
         }
 
     } else if (new_field->type == TYPE_STRUCT) {
         if (set_struct_field_custom_typename(new_field, data, &data_idx, length) == false) {
-            goto cleanup;
+            return false;
         }
     }
     if (is_array) {
         if (set_struct_field_array(new_field, data, &data_idx, length) == false) {
-            goto cleanup;
+            return false;
         }
     }
 
     if (set_struct_field_keyname(new_field, data, &data_idx, length) == false) {
-        goto cleanup;
+        return false;
     }
 
     if (data_idx != length)  // check that there is no more
@@ -376,11 +373,25 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
 
     flist_push_back((flist_node_t **) &s->fields, (flist_node_t *) new_field);
     return true;
-cleanup:
-    if (new_field != NULL) {
-        delete_field(new_field);
+}
+
+/**
+ * Set struct field
+ *
+ * @param[in] length data length
+ * @param[in] data the field data
+ * @return whether it was successful
+ */
+bool set_struct_field(uint8_t length, const uint8_t *data) {
+    s_struct_712_field *new_field = NULL;
+
+    if (!set_struct_field_internal(&new_field, length, data)) {
+        if (new_field != NULL) {
+            delete_field(new_field);
+        }
+        return false;
     }
-    return false;
+    return true;
 }
 
 typedef struct {
