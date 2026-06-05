@@ -1,5 +1,4 @@
 #include "schema_hash.h"
-#include "hash_bytes.h"
 #include "typed_data.h"
 #include "format_hash_field_type.h"
 
@@ -21,39 +20,66 @@ bool compute_schema_hash(uint8_t hash[CX_SHA224_SIZE]) {
     const s_struct_712_field *field_ptr;
     cx_sha224_t hash_ctx;
 
-    cx_sha224_init(&hash_ctx);
+    if (cx_sha224_init_no_throw(&hash_ctx) != CX_OK) {
+        return false;
+    }
 
     struct_ptr = get_struct_list();
-    hash_byte('{', (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "{", 1) != CX_OK) {
+        return false;
+    }
     while (struct_ptr != NULL) {
-        hash_byte('"', (cx_hash_t *) &hash_ctx);
-        hash_nbytes((uint8_t *) struct_ptr->name,
-                    strlen(struct_ptr->name),
-                    (cx_hash_t *) &hash_ctx);
-        hash_nbytes((uint8_t *) "\":[", 3, (cx_hash_t *) &hash_ctx);
+        if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "\"", 1) != CX_OK) {
+            return false;
+        }
+        if (cx_hash_update((cx_hash_t *) &hash_ctx,
+                           (uint8_t *) struct_ptr->name,
+                           strlen(struct_ptr->name)) != CX_OK) {
+            return false;
+        }
+        if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "\":[", 3) != CX_OK) {
+            return false;
+        }
         field_ptr = struct_ptr->fields;
         while (field_ptr != NULL) {
-            hash_nbytes((uint8_t *) "{\"name\":\"", 9, (cx_hash_t *) &hash_ctx);
-            hash_nbytes((uint8_t *) field_ptr->key_name,
-                        strlen(field_ptr->key_name),
-                        (cx_hash_t *) &hash_ctx);
-            hash_nbytes((uint8_t *) "\",\"type\":\"", 10, (cx_hash_t *) &hash_ctx);
+            if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "{\"name\":\"", 9) != CX_OK) {
+                return false;
+            }
+            if (cx_hash_update((cx_hash_t *) &hash_ctx,
+                               (uint8_t *) field_ptr->key_name,
+                               strlen(field_ptr->key_name)) != CX_OK) {
+                return false;
+            }
+            if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "\",\"type\":\"", 10) !=
+                CX_OK) {
+                return false;
+            }
             if (!format_hash_field_type(field_ptr, (cx_hash_t *) &hash_ctx)) {
                 return false;
             }
-            hash_nbytes((uint8_t *) "\"}", 2, (cx_hash_t *) &hash_ctx);
+            if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "\"}", 2) != CX_OK) {
+                return false;
+            }
             if (((flist_node_t *) field_ptr)->next != NULL) {
-                hash_byte(',', (cx_hash_t *) &hash_ctx);
+                if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) ",", 1) != CX_OK) {
+                    return false;
+                }
             }
             field_ptr = (s_struct_712_field *) ((flist_node_t *) field_ptr)->next;
         }
-        hash_byte(']', (cx_hash_t *) &hash_ctx);
+        if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "]", 1) != CX_OK) {
+            return false;
+        }
         if (((flist_node_t *) struct_ptr)->next != NULL) {
-            hash_byte(',', (cx_hash_t *) &hash_ctx);
+            if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) ",", 1) != CX_OK) {
+                return false;
+            }
         }
         struct_ptr = (s_struct_712 *) ((flist_node_t *) struct_ptr)->next;
     }
-    hash_byte('}', (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) "}", 1) != CX_OK) {
+        return false;
+    }
 
-    return finalize_hash((cx_hash_t *) &hash_ctx, hash, CX_SHA224_SIZE);
+    return cx_hash_final((cx_hash_t *) &hash_ctx, hash) == CX_OK;
 }

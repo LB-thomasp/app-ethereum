@@ -1,5 +1,4 @@
 #include "filtering.h"
-#include "hash_bytes.h"
 #include "public_keys.h"
 #include "manage_asset_info.h"
 #include "context_712.h"
@@ -43,19 +42,23 @@ static bool hash_filtering_path(cx_hash_t *hash_ctx, bool discarded, uint32_t *p
     const s_struct_712_field *field_ptr;
     const char *key;
     const char *path;
-    uint8_t path_len;
+    size_t path_len;
 
     if (discarded) {
         if ((path = ui_712_get_discarded_path()) == NULL) {
             return false;
         }
         path_len = strlen(path);
-        hash_nbytes((uint8_t *) path, path_len, hash_ctx);
+        if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) path, path_len) != CX_OK) {
+            return false;
+        }
         *path_crc = cx_crc32_update(*path_crc, path, path_len);
     } else {
         for (uint8_t i = 0; i < impl_get_depth_count(); ++i) {
             if (i > 0) {
-                hash_byte('.', hash_ctx);
+                if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) ".", 1) != CX_OK) {
+                    return false;
+                }
                 *path_crc = cx_crc32_update(*path_crc, ".", 1);
             }
             if ((field_ptr = impl_get_nth_field(i + 1)) == NULL) {
@@ -63,13 +66,17 @@ static bool hash_filtering_path(cx_hash_t *hash_ctx, bool discarded, uint32_t *p
             }
             if ((key = field_ptr->key_name) != NULL) {
                 // field name
-                hash_nbytes((uint8_t *) key, strlen(key), hash_ctx);
+                if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) key, strlen(key)) != CX_OK) {
+                    return false;
+                }
                 *path_crc = cx_crc32_update(*path_crc, key, strlen(key));
 
                 // array levels
                 if (field_ptr->array_level_count > 0) {
                     for (int j = 0; j < field_ptr->array_level_count; ++j) {
-                        hash_nbytes((uint8_t *) ".[]", 3, hash_ctx);
+                        if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) ".[]", 3) != CX_OK) {
+                            return false;
+                        }
                         *path_crc = cx_crc32_update(*path_crc, ".[]", 3);
                     }
                 }
@@ -92,10 +99,14 @@ static bool sig_verif_start(cx_sha256_t *hash_ctx, uint8_t magic) {
     uint64_t chain_id;
     const uint8_t *addr;
 
-    cx_sha256_init(hash_ctx);
+    if (cx_sha256_init_no_throw(hash_ctx) != CX_OK) {
+        return false;
+    }
 
     // Magic number, makes it so a signature of one type can't be used as another
-    hash_byte(magic, (cx_hash_t *) hash_ctx);
+    if (cx_hash_update((cx_hash_t *) hash_ctx, &magic, sizeof(magic)) != CX_OK) {
+        return false;
+    }
 
     // Chain ID
     uint64_t domain_chain_id;
@@ -104,7 +115,9 @@ static bool sig_verif_start(cx_sha256_t *hash_ctx, uint8_t magic) {
         domain_chain_id = 0;
     }
     chain_id = __builtin_bswap64(domain_chain_id);
-    hash_nbytes((uint8_t *) &chain_id, sizeof(chain_id), (cx_hash_t *) hash_ctx);
+    if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) &chain_id, sizeof(chain_id)) != CX_OK) {
+        return false;
+    }
 
     // Contract address
     // we can't compare the returned address with anything since filtering payloads are signed on an
@@ -117,13 +130,14 @@ static bool sig_verif_start(cx_sha256_t *hash_ctx, uint8_t magic) {
     if ((addr = get_implem_contract(&domain_chain_id, domain_contract, NULL)) == NULL) {
         addr = domain_contract;
     }
-    hash_nbytes(addr, ADDRESS_LENGTH, (cx_hash_t *) hash_ctx);
+    if (cx_hash_update((cx_hash_t *) hash_ctx, addr, ADDRESS_LENGTH) != CX_OK) {
+        return false;
+    }
 
     // Schema hash
-    hash_nbytes(eip712_context->schema_hash,
-                sizeof(eip712_context->schema_hash),
-                (cx_hash_t *) hash_ctx);
-    return true;
+    return cx_hash_update((cx_hash_t *) hash_ctx,
+                          eip712_context->schema_hash,
+                          sizeof(eip712_context->schema_hash)) == CX_OK;
 }
 
 /**
@@ -137,7 +151,7 @@ static bool sig_verif_start(cx_sha256_t *hash_ctx, uint8_t magic) {
 static bool sig_verif_end(cx_sha256_t *hash_ctx, const uint8_t *sig, uint8_t sig_length) {
     uint8_t hash[INT256_LENGTH];
 
-    if (finalize_hash((cx_hash_t *) hash_ctx, hash, sizeof(hash)) != true) {
+    if (cx_hash_final((cx_hash_t *) hash_ctx, hash) != CX_OK) {
         return false;
     }
 
@@ -229,8 +243,12 @@ bool filtering_message_info(const uint8_t *payload, uint8_t length) {
     if (!sig_verif_start(&hash_ctx, FILT_MAGIC_MESSAGE_INFO)) {
         return false;
     }
-    hash_byte(filters_count, (cx_hash_t *) &hash_ctx);
-    hash_nbytes((uint8_t *) name, sizeof(char) * name_len, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &filters_count, sizeof(filters_count)) != CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) name, name_len) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -395,7 +413,9 @@ bool filtering_calldata_spender(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_byte(index, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &index, sizeof(index)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -456,7 +476,9 @@ bool filtering_calldata_amount(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_byte(index, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &index, sizeof(index)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -517,7 +539,9 @@ bool filtering_calldata_selector(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_byte(index, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &index, sizeof(index)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -578,7 +602,9 @@ bool filtering_calldata_chain_id(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_byte(index, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &index, sizeof(index)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -639,7 +665,9 @@ bool filtering_calldata_callee(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_byte(index, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &index, sizeof(index)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -700,7 +728,9 @@ bool filtering_calldata_value(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_byte(index, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &index, sizeof(index)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -807,13 +837,35 @@ bool filtering_calldata_info(const uint8_t *payload, uint8_t length) {
     if (!sig_verif_start(&hash_ctx, FILT_MAGIC_CALLDATA_INFO)) {
         return false;
     }
-    hash_byte(index, (cx_hash_t *) &hash_ctx);
-    hash_byte(value_flag, (cx_hash_t *) &hash_ctx);
-    hash_byte(callee_flag, (cx_hash_t *) &hash_ctx);
-    hash_byte(chain_id_flag, (cx_hash_t *) &hash_ctx);
-    hash_byte(selector_flag, (cx_hash_t *) &hash_ctx);
-    hash_byte(amount_flag, (cx_hash_t *) &hash_ctx);
-    hash_byte(spender_flag, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &index, sizeof(index)) != CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) &value_flag, sizeof(value_flag)) !=
+        CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) &callee_flag, sizeof(callee_flag)) !=
+        CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx,
+                       (uint8_t *) &chain_id_flag,
+                       sizeof(chain_id_flag)) != CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx,
+                       (uint8_t *) &selector_flag,
+                       sizeof(selector_flag)) != CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) &amount_flag, sizeof(amount_flag)) !=
+        CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) &spender_flag, sizeof(spender_flag)) !=
+        CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -977,9 +1029,15 @@ bool filtering_trusted_name(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_nbytes((uint8_t *) name, sizeof(char) * name_len, (cx_hash_t *) &hash_ctx);
-    hash_nbytes((uint8_t *) types, type_count, (cx_hash_t *) &hash_ctx);
-    hash_nbytes((uint8_t *) sources, source_count, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) name, name_len) != CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) types, type_count) != CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) sources, source_count) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -1046,7 +1104,9 @@ bool filtering_date_time(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_nbytes((uint8_t *) name, sizeof(char) * name_len, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) name, name_len) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -1107,7 +1167,9 @@ bool filtering_amount_join_token(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_byte(join_id, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &join_id, sizeof(join_id)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -1180,8 +1242,12 @@ bool filtering_amount_join_value(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_nbytes((uint8_t *) name, sizeof(char) * name_len, (cx_hash_t *) &hash_ctx);
-    hash_byte(join_id, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) name, name_len) != CX_OK) {
+        return false;
+    }
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, &join_id, sizeof(join_id)) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }
@@ -1257,7 +1323,9 @@ bool filtering_raw_field(const uint8_t *payload,
     if (!hash_filtering_path((cx_hash_t *) &hash_ctx, discarded, path_crc)) {
         return false;
     }
-    hash_nbytes((uint8_t *) name, sizeof(char) * name_len, (cx_hash_t *) &hash_ctx);
+    if (cx_hash_update((cx_hash_t *) &hash_ctx, (uint8_t *) name, name_len) != CX_OK) {
+        return false;
+    }
     if (!sig_verif_end(&hash_ctx, sig, sig_len)) {
         return false;
     }

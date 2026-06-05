@@ -3,7 +3,6 @@
 #include "app_mem_utils.h"
 #include "mem_utils.h"
 #include "format_hash_field_type.h"
-#include "hash_bytes.h"
 #include "typed_data.h"
 #include "lists.h"
 
@@ -21,12 +20,13 @@ static bool encode_and_hash_field(cx_sha3_t *hash_ctx, const s_struct_712_field 
         return false;
     }
     // space between field type name and field name
-    hash_byte(' ', (cx_hash_t *) hash_ctx);
+    if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) " ", 1) != CX_OK) {
+        return false;
+    }
 
     // field name
     name = field_ptr->key_name;
-    hash_nbytes((uint8_t *) name, strlen(name), (cx_hash_t *) hash_ctx);
-    return true;
+    return cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) name, strlen(name)) == CX_OK;
 }
 
 /**
@@ -43,16 +43,23 @@ static bool encode_and_hash_type(cx_sha3_t *hash_ctx, const s_struct_712 *struct
 
     // struct name
     struct_name = struct_ptr->name;
-    hash_nbytes((uint8_t *) struct_name, strlen(struct_name), (cx_hash_t *) hash_ctx);
+    if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) struct_name, strlen(struct_name)) !=
+        CX_OK) {
+        return false;
+    }
 
     // opening struct parentheses
-    hash_byte('(', (cx_hash_t *) hash_ctx);
+    if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) "(", 1) != CX_OK) {
+        return false;
+    }
 
     for (field_ptr = struct_ptr->fields; field_ptr != NULL;
          field_ptr = (s_struct_712_field *) ((flist_node_t *) field_ptr)->next) {
         // comma separating struct fields
         if (field_ptr != struct_ptr->fields) {
-            hash_byte(',', (cx_hash_t *) hash_ctx);
+            if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) ",", 1) != CX_OK) {
+                return false;
+            }
         }
 
         if (encode_and_hash_field(hash_ctx, field_ptr) == false) {
@@ -60,7 +67,9 @@ static bool encode_and_hash_type(cx_sha3_t *hash_ctx, const s_struct_712 *struct
         }
     }
     // closing struct parentheses
-    hash_byte(')', (cx_hash_t *) hash_ctx);
+    if (cx_hash_update((cx_hash_t *) hash_ctx, (uint8_t *) ")", 1) != CX_OK) {
+        return false;
+    }
 
     return true;
 }
@@ -205,7 +214,7 @@ static bool type_hash_internal(const char *struct_name,
     }
 
     // copy hash into memory
-    if (finalize_hash((cx_hash_t *) &hash_ctx, hash_buf, CX_KECCAK_256_SIZE) != true) {
+    if (cx_hash_final((cx_hash_t *) &hash_ctx, hash_buf) != CX_OK) {
         return false;
     }
     return true;
