@@ -62,7 +62,7 @@ void ui_712_reject_cb(void) {
 }
 
 static char *format_hash(const uint8_t *hash, char *buffer, size_t buffer_size, size_t offset) {
-    array_bytes_string(buffer + offset, buffer_size - offset, hash, KECCAK256_HASH_BYTESIZE);
+    array_bytes_string(buffer + offset, buffer_size - offset, hash, CX_KECCAK_256_SIZE);
     return buffer + offset;
 }
 

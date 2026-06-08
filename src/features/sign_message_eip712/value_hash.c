@@ -5,7 +5,7 @@
 #include "encode_field.h"
 #include "hash_bytes.h"
 #include "app_mem_utils.h"
-#include "common_utils.h"    // KECCAK256_HASH_BYTESIZE
+#include "common_utils.h"    // CX_KECCAK_256_SIZE
 #include "shared_context.h"  // tmpCtx
 
 static bool hash_value(const s_struct_712_value *node, uint8_t *out, uint8_t depth);
@@ -28,7 +28,7 @@ static bool encode_atomic(const s_struct_712_value *leaf, uint8_t *out) {
             return false;
         }
         hash_nbytes(data, length, (cx_hash_t *) &sha3);
-        return finalize_hash((cx_hash_t *) &sha3, out, KECCAK256_HASH_BYTESIZE);
+        return finalize_hash((cx_hash_t *) &sha3, out, CX_KECCAK_256_SIZE);
     }
 
     switch (field->type) {
@@ -70,7 +70,7 @@ static bool encode_atomic(const s_struct_712_value *leaf, uint8_t *out) {
  */
 static bool hash_array(const s_struct_712_value *arr, uint8_t *out, uint8_t depth) {
     cx_sha3_t sha3;
-    uint8_t elem_hash[KECCAK256_HASH_BYTESIZE];
+    uint8_t elem_hash[CX_KECCAK_256_SIZE];
 
     if (cx_keccak_init_no_throw(&sha3, 256) != CX_OK) {
         apdu_response_code = SWO_INCORRECT_DATA;
@@ -79,9 +79,9 @@ static bool hash_array(const s_struct_712_value *arr, uint8_t *out, uint8_t dept
     for (const s_struct_712_value *elem = arr->children; elem != NULL;
          elem = (const s_struct_712_value *) ((const flist_node_t *) elem)->next) {
         if (!hash_value(elem, elem_hash, depth)) return false;
-        hash_nbytes(elem_hash, KECCAK256_HASH_BYTESIZE, (cx_hash_t *) &sha3);
+        hash_nbytes(elem_hash, CX_KECCAK_256_SIZE, (cx_hash_t *) &sha3);
     }
-    return finalize_hash((cx_hash_t *) &sha3, out, KECCAK256_HASH_BYTESIZE);
+    return finalize_hash((cx_hash_t *) &sha3, out, CX_KECCAK_256_SIZE);
 }
 
 /**
@@ -90,8 +90,8 @@ static bool hash_array(const s_struct_712_value *arr, uint8_t *out, uint8_t dept
  */
 static bool hash_struct(const s_struct_712_value *node, uint8_t *out, uint8_t depth) {
     cx_sha3_t sha3;
-    uint8_t type_hash_buf[KECCAK256_HASH_BYTESIZE];
-    uint8_t child_hash[KECCAK256_HASH_BYTESIZE];
+    uint8_t type_hash_buf[CX_KECCAK_256_SIZE];
+    uint8_t child_hash[CX_KECCAK_256_SIZE];
     const char *name = node->struct_type->name;
 
     if (depth > IMPL_MAX_DEPTH) {
@@ -112,14 +112,14 @@ static bool hash_struct(const s_struct_712_value *node, uint8_t *out, uint8_t de
         apdu_response_code = SWO_INCORRECT_DATA;
         return false;
     }
-    hash_nbytes(type_hash_buf, KECCAK256_HASH_BYTESIZE, (cx_hash_t *) &sha3);
+    hash_nbytes(type_hash_buf, CX_KECCAK_256_SIZE, (cx_hash_t *) &sha3);
 
     for (const s_struct_712_value *child = node->children; child != NULL;
          child = (const s_struct_712_value *) ((const flist_node_t *) child)->next) {
         if (!hash_value(child, child_hash, depth + 1)) return false;
-        hash_nbytes(child_hash, KECCAK256_HASH_BYTESIZE, (cx_hash_t *) &sha3);
+        hash_nbytes(child_hash, CX_KECCAK_256_SIZE, (cx_hash_t *) &sha3);
     }
-    return finalize_hash((cx_hash_t *) &sha3, out, KECCAK256_HASH_BYTESIZE);
+    return finalize_hash((cx_hash_t *) &sha3, out, CX_KECCAK_256_SIZE);
 }
 
 static bool hash_value(const s_struct_712_value *node, uint8_t *out, uint8_t depth) {
@@ -147,7 +147,7 @@ static bool hash_value(const s_struct_712_value *node, uint8_t *out, uint8_t dep
  * and accessible via impl_get_domain_chain_id() / impl_get_domain_contract_addr().
  */
 bool value_hash_pass(const s_eip712_impl *impl) {
-    uint8_t hash[KECCAK256_HASH_BYTESIZE];
+    uint8_t hash[CX_KECCAK_256_SIZE];
 
     if (impl == NULL) {
         return false;
@@ -157,13 +157,13 @@ bool value_hash_pass(const s_eip712_impl *impl) {
         PRINTF("value_hash_pass: domain hash failed\n");
         return false;
     }
-    memcpy(tmpCtx.messageSigningContext712.domainHash, hash, KECCAK256_HASH_BYTESIZE);
+    memcpy(tmpCtx.messageSigningContext712.domainHash, hash, CX_KECCAK_256_SIZE);
 
     if ((impl->message == NULL) || !hash_struct(impl->message, hash, 0)) {
         PRINTF("value_hash_pass: message hash failed\n");
         return false;
     }
-    memcpy(tmpCtx.messageSigningContext712.messageHash, hash, KECCAK256_HASH_BYTESIZE);
+    memcpy(tmpCtx.messageSigningContext712.messageHash, hash, CX_KECCAK_256_SIZE);
 
     return true;
 }

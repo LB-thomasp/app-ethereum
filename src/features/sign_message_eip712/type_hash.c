@@ -205,7 +205,7 @@ static bool type_hash_internal(const char *struct_name,
     }
 
     // copy hash into memory
-    if (finalize_hash((cx_hash_t *) &hash_ctx, hash_buf, KECCAK256_HASH_BYTESIZE) != true) {
+    if (finalize_hash((cx_hash_t *) &hash_ctx, hash_buf, CX_KECCAK_256_SIZE) != true) {
         return false;
     }
     return true;

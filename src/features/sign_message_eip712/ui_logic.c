@@ -258,7 +258,7 @@ bool ui_712_message_hash(void) {
         array_bytes_string(strings.tmp.tmp,
                            sizeof(strings.tmp.tmp),
                            tmpCtx.messageSigningContext712.messageHash,
-                           KECCAK256_HASH_BYTESIZE);
+                           CX_KECCAK_256_SIZE);
         ui_712_set_value(NULL, 0);
     }
     ui_ctx->end_reached = true;
