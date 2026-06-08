@@ -100,7 +100,7 @@ uint8_t impl_backup_get_depth_count(void);
 const s_struct_712_field *impl_backup_get_nth_field(uint8_t n);
 bool impl_backup_exists(const char *path, size_t length);
 
-uint64_t impl_get_domain_chain_id(void);
+bool impl_get_domain_chain_id(uint64_t *chain_id);
 bool impl_get_domain_contract_addr(uint8_t addr[ADDRESS_LENGTH]);
 
 // Visitor callback for value tree traversal. Return false to abort traversal.

@@ -99,7 +99,11 @@ static bool sig_verif_start(cx_sha256_t *hash_ctx, uint8_t magic) {
     hash_byte(magic, (cx_hash_t *) hash_ctx);
 
     // Chain ID
-    uint64_t domain_chain_id = impl_get_domain_chain_id();
+    uint64_t domain_chain_id;
+    // optional in EIP-712 domain; if absent, 0 is used in the signature hash
+    if (!impl_get_domain_chain_id(&domain_chain_id)) {
+        domain_chain_id = 0;
+    }
     chain_id = __builtin_bswap64(domain_chain_id);
     hash_nbytes((uint8_t *) &chain_id, sizeof(chain_id), (cx_hash_t *) hash_ctx);
 
@@ -107,7 +111,10 @@ static bool sig_verif_start(cx_sha256_t *hash_ctx, uint8_t magic) {
     // we can't compare the returned address with anything since filtering payloads are signed on an
     // address which is not provided
     uint8_t domain_contract[ADDRESS_LENGTH];
-    impl_get_domain_contract_addr(domain_contract);
+    // optional in EIP-712 domain; if absent, 0 is used in the signature hash
+    if (!impl_get_domain_contract_addr(domain_contract)) {
+        explicit_bzero(domain_contract, sizeof(domain_contract));
+    }
     if ((addr = get_implem_contract(&domain_chain_id, domain_contract, NULL)) == NULL) {
         addr = domain_contract;
     }
@@ -232,23 +239,27 @@ bool filtering_message_info(const uint8_t *payload, uint8_t length) {
     // Handling
     ui_712_set_filters_count(filters_count);
     if (!N_storage.verbose_eip712) {
+        uint64_t domain_chain_id;
+
         ui_712_set_title("Contract", 8);
         ui_712_set_value(name, name_len);
-        // In the value-tree architecture the filter APDU for the message arrives while the
-        // root type is still ROOT_DOMAIN (message impl not yet set). Add the Network pair
-        // after the Contract pair so it appears in the review. Skip if chain matches the app's own.
-        if (ui_712_get_filtering_mode() == EIP712_FILTERING_FULL &&
-            impl_get_domain_chain_id() != g_chain_config->chain_id) {
-            uint64_t domain_chain_id = impl_get_domain_chain_id();
-            const char *network_name = get_network_name_from_chain_id(&domain_chain_id);
-            ui_712_set_title("Network", 7);
-            if (network_name != NULL) {
-                ui_712_set_value(network_name, strlen(network_name));
-            } else {
-                if (!format_u64(strings.tmp.tmp, NETWORK_STRING_MAX_SIZE, domain_chain_id)) {
-                    return false;
+        if (impl_get_domain_chain_id(&domain_chain_id)) {
+            // In the value-tree architecture the filter APDU for the message arrives while the
+            // root type is still ROOT_DOMAIN (message impl not yet set). Add the Network pair
+            // after the Contract pair so it appears in the review. Skip if chain matches the app's
+            // own.
+            if (ui_712_get_filtering_mode() == EIP712_FILTERING_FULL &&
+                domain_chain_id != g_chain_config->chain_id) {
+                const char *network_name = get_network_name_from_chain_id(&domain_chain_id);
+                ui_712_set_title("Network", 7);
+                if (network_name != NULL) {
+                    ui_712_set_value(network_name, strlen(network_name));
+                } else {
+                    if (!format_u64(strings.tmp.tmp, NETWORK_STRING_MAX_SIZE, domain_chain_id)) {
+                        return false;
+                    }
+                    ui_712_set_value(NULL, 0);
                 }
-                ui_712_set_value(NULL, 0);
             }
         }
         return ui_712_continue_or_finish();
@@ -819,7 +830,9 @@ bool filtering_calldata_info(const uint8_t *payload, uint8_t length) {
             calldata_info->callee_state = CALLDATA_INFO_PARAM_UNSET;
             break;
         case CALLDATA_FLAG_ADDR_VERIFYING_CONTRACT:
-            impl_get_domain_contract_addr(calldata_info->callee);
+            if (!impl_get_domain_contract_addr(calldata_info->callee)) {
+                return false;
+            }
             calldata_info->callee_state = CALLDATA_INFO_PARAM_SET;
             break;
         default:
@@ -828,14 +841,18 @@ bool filtering_calldata_info(const uint8_t *payload, uint8_t length) {
     if (chain_id_flag) {
         calldata_info->chain_id_state = CALLDATA_INFO_PARAM_UNSET;
     } else {
-        calldata_info->chain_id = impl_get_domain_chain_id();
+        if (!impl_get_domain_chain_id(&calldata_info->chain_id)) {
+            return false;
+        }
         calldata_info->chain_id_state = CALLDATA_INFO_PARAM_SET;
     }
     if (selector_flag) calldata_info->selector_state = CALLDATA_INFO_PARAM_UNSET;
     if (amount_flag) calldata_info->amount_state = CALLDATA_INFO_PARAM_UNSET;
     switch (spender_flag) {
         case CALLDATA_FLAG_ADDR_VERIFYING_CONTRACT:
-            impl_get_domain_contract_addr(calldata_info->spender);
+            if (!impl_get_domain_contract_addr(calldata_info->spender)) {
+                return false;
+            }
             calldata_info->spender_state = CALLDATA_INFO_PARAM_SET;
             break;
         case CALLDATA_FLAG_ADDR_NONE:
@@ -1176,7 +1193,9 @@ bool filtering_amount_join_value(const uint8_t *payload,
         ui_712_token_join_prepare_addr_check(join_id);
         // simulate as if we had received a token-join addr
         uint8_t domain_contract[ADDRESS_LENGTH];
-        impl_get_domain_contract_addr(domain_contract);
+        if (!impl_get_domain_contract_addr(domain_contract)) {
+            return false;
+        }
         if (!ui_712_set_amount_join_token_addr(domain_contract)) {
             return false;
         }

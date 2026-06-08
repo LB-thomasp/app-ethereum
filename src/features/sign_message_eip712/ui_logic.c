@@ -452,7 +452,11 @@ static s_amount_join *get_amount_join(uint8_t id) {
  */
 static bool ui_712_format_amount_join(const s_amount_join *amount_join) {
     const s_token_info *token_info;
-    uint64_t domain_chain_id = impl_get_domain_chain_id();
+    uint64_t domain_chain_id;
+
+    if (!impl_get_domain_chain_id(&domain_chain_id)) {
+        return false;
+    }
 
     token_info = get_matching_token_info(&domain_chain_id, amount_join->address);
     if (ismaxint(amount_join->value, sizeof(amount_join->value))) {
@@ -539,7 +543,9 @@ static bool ui_712_format_trusted_name(const uint8_t *data, uint8_t length) {
     if (length != ADDRESS_LENGTH) {
         return false;
     }
-    domain_chain_id = impl_get_domain_chain_id();
+    if (!impl_get_domain_chain_id(&domain_chain_id)) {
+        return false;
+    }
     if ((trusted_name = get_trusted_name(ui_ctx->tn_type_count,
                                          ui_ctx->tn_types,
                                          ui_ctx->tn_source_count,
@@ -606,7 +612,9 @@ static bool handle_fallback_empty_calldata(const s_eip712_calldata_info *calldat
         if (calldata_info->chain_id != 0) {
             chain_id = calldata_info->chain_id;
         } else {
-            chain_id = impl_get_domain_chain_id();
+            if (!impl_get_domain_chain_id(&chain_id)) {
+                return false;
+            }
         }
 
         ticker = get_displayable_ticker(&chain_id, g_chain_config, true);

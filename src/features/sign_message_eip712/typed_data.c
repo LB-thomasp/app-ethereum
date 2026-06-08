@@ -754,18 +754,21 @@ bool impl_backup_exists(const char *path, size_t length) {
 }
 
 /**
- * Return the chainId from the domain value tree, or 0 if not present.
+ * Fill @p chain_id with the chainId from the domain value tree.
+ *
+ * @return true if the field was found and copied into @p chain_id, false otherwise.
  */
-uint64_t impl_get_domain_chain_id(void) {
-    if (g_impl.domain == NULL) return 0;
-
-    for (const s_struct_712_value *child = g_impl.domain->children; child != NULL;
-         child = (const s_struct_712_value *) ((const flist_node_t *) child)->next) {
-        if ((child->kind == VAL_ATOMIC) && (strcmp(child->field->key_name, "chainId") == 0)) {
-            return u64_from_BE(child->data, (uint8_t) child->length);
+bool impl_get_domain_chain_id(uint64_t *chain_id) {
+    if (g_impl.domain != NULL) {
+        for (const s_struct_712_value *child = g_impl.domain->children; child != NULL;
+             child = (const s_struct_712_value *) ((const flist_node_t *) child)->next) {
+            if ((child->kind == VAL_ATOMIC) && (strcmp(child->field->key_name, "chainId") == 0)) {
+                *chain_id = u64_from_BE(child->data, (uint8_t) child->length);
+                return true;
+            }
         }
     }
-    return 0;
+    return false;
 }
 
 /**
@@ -778,37 +781,38 @@ bool impl_get_domain_contract_addr(uint8_t addr[ADDRESS_LENGTH]) {
 
     explicit_bzero(addr, ADDRESS_LENGTH);
 
-    if (g_impl.domain == NULL) return false;
+    if (g_impl.domain != NULL) {
+        for (const s_struct_712_value *child = g_impl.domain->children; child != NULL;
+             child = (const s_struct_712_value *) ((const flist_node_t *) child)->next) {
+            if (child->kind != VAL_ATOMIC) continue;
+            if (strcmp(child->field->key_name, "verifyingContract") != 0) continue;
 
-    for (const s_struct_712_value *child = g_impl.domain->children; child != NULL;
-         child = (const s_struct_712_value *) ((const flist_node_t *) child)->next) {
-        if (child->kind != VAL_ATOMIC) continue;
-        if (strcmp(child->field->key_name, "verifyingContract") != 0) continue;
+            const uint8_t *data = child->data;
+            uint16_t length = child->length;
 
-        const uint8_t *data = child->data;
-        uint16_t length = child->length;
-
-        switch (child->field->type) {
-            case TYPE_SOL_ADDRESS:
-                if (length > ADDRESS_LENGTH) {
-                    PRINTF("Error: verifyingContract too big\n");
+            switch (child->field->type) {
+                case TYPE_SOL_ADDRESS:
+                    if (length > ADDRESS_LENGTH) {
+                        PRINTF("Error: verifyingContract too big\n");
+                        return false;
+                    }
+                    break;
+                case TYPE_SOL_STRING:
+                    if ((length != strlen(ethermint_vc)) ||
+                        (strncmp((char *) data, ethermint_vc, length) != 0)) {
+                        PRINTF("Error: non standard verifyingContract\n");
+                        return false;
+                    }
+                    break;
+                default:
+                    PRINTF("Error: unexpected type for verifyingContract (%u)!\n",
+                           child->field->type);
                     return false;
-                }
-                break;
-            case TYPE_SOL_STRING:
-                if ((length != strlen(ethermint_vc)) ||
-                    (strncmp((char *) data, ethermint_vc, length) != 0)) {
-                    PRINTF("Error: non standard verifyingContract\n");
-                    return false;
-                }
-                break;
-            default:
-                PRINTF("Error: unexpected type for verifyingContract (%u)!\n", child->field->type);
-                return false;
+            }
+            memcpy(addr, data, length);
+            explicit_bzero(addr + length, ADDRESS_LENGTH - length);
+            return true;
         }
-        memcpy(addr, data, length);
-        explicit_bzero(addr + length, ADDRESS_LENGTH - length);
-        return true;
     }
     return false;
 }

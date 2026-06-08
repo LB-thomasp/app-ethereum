@@ -480,7 +480,9 @@ static bool check_gating_address(void) {
             selector = GATING->hash_selector;
             break;
         case TX_TYPE_TYPED_DATA:
-            impl_get_domain_contract_addr(eip712_contract);
+            if (!impl_get_domain_contract_addr(eip712_contract)) {
+                return false;
+            }
             contract = eip712_contract;
             break;
         default:
@@ -542,7 +544,8 @@ static bool check_gating_chain_id(void) {
             }
             break;
         case TX_TYPE_TYPED_DATA:
-            chain_id = impl_get_domain_chain_id();
+            // return value not checked on purpose
+            impl_get_domain_chain_id(&chain_id);
             // For EIP-712, the chain_id is optional, and be 0 in the descriptor (any chain)
             if ((GATING->chain_id != 0) && (GATING->chain_id != chain_id)) {
                 PRINTF("[GATING] Chain_ID mismatch: %llu != %llu\n", GATING->chain_id, chain_id);
