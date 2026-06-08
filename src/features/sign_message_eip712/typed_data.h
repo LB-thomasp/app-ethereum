@@ -34,8 +34,10 @@ typedef struct {
 typedef struct struct_712_field {
     flist_node_t _list;
     e_type type : 4;
-    char *type_name;
-    uint8_t type_size;
+    union {
+        char *struct_name;
+        uint8_t type_size;
+    };
     uint8_t array_level_count;
     s_struct_712_field_array_level *array_levels;
     char *key_name;

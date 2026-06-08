@@ -21,7 +21,9 @@ bool typed_data_init(void) {
 
 // to be used as a \ref f_list_node_del
 static void delete_field(s_struct_712_field *f) {
-    APP_MEM_FREE(f->type_name);
+    if (f->type == TYPE_CUSTOM) {
+        APP_MEM_FREE(f->struct_name);
+    }
     APP_MEM_FREE(f->array_levels);
     APP_MEM_FREE(f->key_name);
     APP_MEM_FREE(f);
@@ -49,7 +51,7 @@ const char *get_struct_field_typename(const s_struct_712_field *field_ptr) {
         return NULL;
     }
     if (field_ptr->type == TYPE_CUSTOM) {
-        return field_ptr->type_name;
+        return field_ptr->struct_name;
     }
     return get_struct_field_sol_typename(field_ptr);
 }
@@ -172,13 +174,13 @@ static bool set_struct_field_custom_typename(s_struct_712_field *field,
         apdu_response_code = SWO_INCORRECT_DATA;
         return false;
     }
-    if ((field->type_name = APP_MEM_ALLOC(typename_len + 1)) == NULL) {
+    if ((field->struct_name = APP_MEM_ALLOC(typename_len + 1)) == NULL) {
         apdu_response_code = SWO_INSUFFICIENT_MEMORY;
         return false;
     }
 
-    field->type_name[typename_len] = '\0';
-    memmove(field->type_name, &data[*data_idx], typename_len);
+    field->struct_name[typename_len] = '\0';
+    memmove(field->struct_name, &data[*data_idx], typename_len);
     *data_idx += typename_len;
     return true;
 }
@@ -369,10 +371,7 @@ bool set_struct_field(uint8_t length, const uint8_t *data) {
     return true;
 cleanup:
     if (new_field != NULL) {
-        APP_MEM_FREE(new_field->key_name);
-        APP_MEM_FREE(new_field->array_levels);
-        APP_MEM_FREE(new_field->type_name);
-        APP_MEM_FREE(new_field);
+        delete_field(new_field);
     }
     return false;
 }
