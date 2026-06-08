@@ -2,8 +2,6 @@
 #include "app_mem_utils.h"
 #include "mem_utils.h"
 #include "sol_typenames.h"
-#include "path.h"
-#include "field_hash.h"
 #include "ui_logic.h"
 #include "typed_data.h"
 #include "apdu_constants.h"  // APDU response codes
@@ -34,14 +32,6 @@ bool eip712_context_init(void) {
         return false;
     }
 
-    if (path_init() == false) {
-        return false;
-    }
-
-    if (field_hash_init() == false) {
-        return false;
-    }
-
     if (ui_712_init() == false) {
         return false;
     }
@@ -62,8 +52,6 @@ bool eip712_context_init(void) {
  */
 void eip712_context_deinit(void) {
     typed_data_deinit();
-    path_deinit();
-    field_hash_deinit();
     ui_712_deinit();
     sol_typenames_deinit();
     APP_MEM_FREE_AND_NULL((void **) &eip712_context);

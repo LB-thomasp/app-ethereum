@@ -39,6 +39,7 @@
 #include "feature_sign_tx.h"
 #include "proxy_info.h"
 #include "context_712.h"
+#include "typed_data.h"
 #include "schema_hash.h"
 #include "lcx_sha256.h"
 
@@ -466,6 +467,7 @@ static bool check_gating_address(void) {
     const uint8_t *address = NULL;
     const uint8_t *selector = NULL;
     const uint8_t *contract = NULL;
+    uint8_t eip712_contract[ADDRESS_LENGTH];
 
     if (is_zeroes_buffer((const void *) GATING->address, ADDRESS_LENGTH)) {
         PRINTF("[GATING] TO address missing\n");
@@ -478,7 +480,8 @@ static bool check_gating_address(void) {
             selector = GATING->hash_selector;
             break;
         case TX_TYPE_TYPED_DATA:
-            contract = eip712_context->contract_addr;
+            impl_get_domain_contract_addr(eip712_contract);
+            contract = eip712_contract;
             break;
         default:
             return false;
@@ -539,7 +542,7 @@ static bool check_gating_chain_id(void) {
             }
             break;
         case TX_TYPE_TYPED_DATA:
-            chain_id = eip712_context->chain_id;
+            chain_id = impl_get_domain_chain_id();
             // For EIP-712, the chain_id is optional, and be 0 in the descriptor (any chain)
             if ((GATING->chain_id != 0) && (GATING->chain_id != chain_id)) {
                 PRINTF("[GATING] Chain_ID mismatch: %llu != %llu\n", GATING->chain_id, chain_id);

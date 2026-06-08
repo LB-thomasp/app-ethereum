@@ -112,3 +112,11 @@ s_eip712_calldata_info *get_current_calldata_info(void);
 bool all_calldata_info_processed(void);
 void calldata_info_set_state(uint8_t index, e_eip712_calldata_state state);
 bool calldata_info_all_received(const s_eip712_calldata_info *calldata_info);
+
+// Feed a fully-received leaf value into the UI display system without triggering
+// Accumulates a fully-received leaf value into the UI pairs list.
+// Used in the new value-tree architecture (no APDU reply triggered).
+// Only effective in EIP712_FILTERING_FULL mode; silently skips otherwise.
+bool ui_712_accumulate_value(const s_struct_712_field *field_ptr,
+                             const uint8_t *data,
+                             uint16_t length);

@@ -1,14 +1,14 @@
 #include "apdu_constants.h"  // APDU response codes
 #include "context_712.h"
-#include "field_hash.h"
-#include "path.h"
 #include "ui_logic.h"
 #include "typed_data.h"
 #include "schema_hash.h"
 #include "filtering.h"
-#include "common_ui.h"  // ui_idle
+#include "common_ui.h"  // ui_idle, ui_error_blind_signing
 #include "manage_asset_info.h"
 #include "tx_ctx.h"  // get_tx_ctx_count
+#include "value_hash.h"
+#include "common_712.h"  // ui_712_start
 
 // APDUs P1
 #define P1_COMPLETE  0x00
@@ -123,41 +123,35 @@ uint16_t handle_eip712_struct_def(uint8_t p2, const uint8_t *cdata, uint8_t leng
  */
 uint16_t handle_eip712_struct_impl(uint8_t p1, uint8_t p2, const uint8_t *cdata, uint8_t length) {
     bool ret = false;
-    bool reply_apdu = true;
 
     if (eip712_context == NULL) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
     } else {
         switch (p2) {
             case P2_IMPL_NAME:
-                // set root type
-                ret = path_set_root((char *) cdata, length);
+                ret = impl_set_root((char *) cdata, length);
                 if (ret) {
-#ifdef SCREEN_SIZE_WALLET
-                    if (ui_712_get_filtering_mode() == EIP712_FILTERING_BASIC) {
-#else
-                    if (N_storage.verbose_eip712) {
-#endif
-                        if ((ret = ui_712_review_struct(path_get_root()))) {
-                            reply_apdu = false;
-                        }
-                    }
-                    if ((path_get_root_type() == ROOT_MESSAGE) &&
-                        (ui_712_get_filtering_mode() == EIP712_FILTERING_FULL)) {
-                        ret = ui_712_review_network(&eip712_context->chain_id);
-                    }
+                    struct_state = DEFINED;
                     ui_712_field_flags_reset();
                 }
                 break;
 
-            case P2_IMPL_FIELD:
-                if ((ret = field_hash(cdata, length, p1 != P1_COMPLETE))) {
-                    reply_apdu = false;
+            case P2_IMPL_FIELD: {
+                const s_struct_712_field *cur_field = impl_get_current_field();
+                const s_struct_712_value *leaf = impl_add_field(cdata, length, p1 != P1_COMPLETE);
+                ret = (leaf != NULL);
+                if (ret && (cur_field != NULL) && (p1 == P1_COMPLETE)) {
+                    ret = ui_712_accumulate_value(cur_field, leaf->data, leaf->length);
                 }
                 break;
+            }
 
             case P2_IMPL_ARRAY:
-                ret = path_new_array_depth(cdata, length);
+                if (length != 1) {
+                    apdu_response_code = SWO_INCORRECT_DATA;
+                } else {
+                    ret = impl_new_array(cdata[0]);
+                }
                 break;
 
             default:
@@ -165,11 +159,8 @@ uint16_t handle_eip712_struct_impl(uint8_t p1, uint8_t p2, const uint8_t *cdata,
                 apdu_response_code = SWO_WRONG_P1_P2;
         }
     }
-    if (reply_apdu) {
-        apdu_reply(ret);
-        return apdu_response_code;
-    }
-    return SWO_NO_RESPONSE;
+    apdu_reply(ret);
+    return apdu_response_code;
 }
 
 /**
@@ -283,14 +274,11 @@ uint16_t handle_eip712_sign(const uint8_t *cdata, uint8_t length) {
 
     if (eip712_context == NULL) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
-    }
-    // if the final hashes are still zero or if there are some unimplemented fields
-    else if (is_zeroes_buffer(tmpCtx.messageSigningContext712.domainHash,
-                              sizeof(tmpCtx.messageSigningContext712.domainHash)) ||
-             is_zeroes_buffer(tmpCtx.messageSigningContext712.messageHash,
-                              sizeof(tmpCtx.messageSigningContext712.messageHash)) ||
-             (path_get_field() != NULL)) {
+    } else if (!impl_is_complete()) {
+        PRINTF("impl not complete\n");
         apdu_response_code = SWO_INCORRECT_DATA;
+    } else if (!impl_hash_pass()) {
+        PRINTF("value_hash_pass failed\n");
     } else if ((ui_712_get_filtering_mode() == EIP712_FILTERING_FULL) &&
                (!ui_712_message_info_received() || (ui_712_remaining_filters() != 0))) {
         PRINTF("%d EIP712 filters are missing\n", ui_712_remaining_filters());
@@ -301,13 +289,31 @@ uint16_t handle_eip712_sign(const uint8_t *cdata, uint8_t length) {
     } else if (parseBip32(cdata, &length, &tmpCtx.messageSigningContext.bip32) == NULL) {
         apdu_response_code = SWO_INCORRECT_DATA;
     } else {
-        ret = true;
+        // In the new value-tree architecture impl APDUs never trigger display, so appState is
+        // not yet APP_STATE_SIGNING_EIP712. Enforce blind-signing protection and transition
+        // to signing state here (the old streaming code did this on the first field display).
+        if ((ui_712_get_filtering_mode() == EIP712_FILTERING_BASIC) && !N_storage.dataAllowed &&
+            !N_storage.verbose_eip712) {
+            ui_error_blind_signing();
+            apdu_response_code = SWO_INCORRECT_DATA;
+            eip712_context->go_home_on_failure = false;
+        } else {
+            // Only call ui_712_start() if not already in signing state (FULL filtering
+            // with filtering APDUs may have already transitioned appState via display).
+            if (appState != APP_STATE_SIGNING_EIP712) {
+                apdu_response_code = ui_712_start(ui_712_get_filtering_mode());
+            }
+            if (apdu_response_code == SWO_SUCCESS) {
+                ret = true;
 #ifndef SCREEN_SIZE_WALLET
-        if (!N_storage.verbose_eip712 && (ui_712_get_filtering_mode() == EIP712_FILTERING_BASIC)) {
-            ret = ui_712_message_hash();
-        }
+                if (!N_storage.verbose_eip712 &&
+                    (ui_712_get_filtering_mode() == EIP712_FILTERING_BASIC)) {
+                    ret = ui_712_message_hash();
+                }
 #endif
-        ui_712_end_sign();
+                ui_712_end_sign();
+            }
+        }
     }
 
     if (!ret) {

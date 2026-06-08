@@ -6,7 +6,6 @@
 #include "context_712.h"
 #include "commands_712.h"
 #include "typed_data.h"
-#include "path.h"
 #include "ui_logic.h"
 #include "filtering.h"
 #include "os_pki.h"
@@ -14,6 +13,9 @@
 #include "proxy_info.h"
 #include "app_mem_utils.h"
 #include "get_public_key.h"
+#include "network.h"
+#include "format.h"
+#include "shared_context.h"
 
 #define FILT_MAGIC_MESSAGE_INFO      183
 #define FILT_MAGIC_CALLDATA_INFO     55
@@ -52,12 +54,12 @@ static bool hash_filtering_path(cx_hash_t *hash_ctx, bool discarded, uint32_t *p
         hash_nbytes((uint8_t *) path, path_len, hash_ctx);
         *path_crc = cx_crc32_update(*path_crc, path, path_len);
     } else {
-        for (uint8_t i = 0; i < path_get_depth_count(); ++i) {
+        for (uint8_t i = 0; i < impl_get_depth_count(); ++i) {
             if (i > 0) {
                 hash_byte('.', hash_ctx);
                 *path_crc = cx_crc32_update(*path_crc, ".", 1);
             }
-            if ((field_ptr = path_get_nth_field(i + 1)) == NULL) {
+            if ((field_ptr = impl_get_nth_field(i + 1)) == NULL) {
                 return false;
             }
             if ((key = field_ptr->key_name) != NULL) {
@@ -97,16 +99,17 @@ static bool sig_verif_start(cx_sha256_t *hash_ctx, uint8_t magic) {
     hash_byte(magic, (cx_hash_t *) hash_ctx);
 
     // Chain ID
-    chain_id = __builtin_bswap64(eip712_context->chain_id);
+    uint64_t domain_chain_id = impl_get_domain_chain_id();
+    chain_id = __builtin_bswap64(domain_chain_id);
     hash_nbytes((uint8_t *) &chain_id, sizeof(chain_id), (cx_hash_t *) hash_ctx);
 
     // Contract address
     // we can't compare the returned address with anything since filtering payloads are signed on an
     // address which is not provided
-    if ((addr =
-             get_implem_contract(&eip712_context->chain_id, eip712_context->contract_addr, NULL)) ==
-        NULL) {
-        addr = eip712_context->contract_addr;
+    uint8_t domain_contract[ADDRESS_LENGTH];
+    impl_get_domain_contract_addr(domain_contract);
+    if ((addr = get_implem_contract(&domain_chain_id, domain_contract, NULL)) == NULL) {
+        addr = domain_contract;
     }
     hash_nbytes(addr, ADDRESS_LENGTH, (cx_hash_t *) hash_ctx);
 
@@ -155,7 +158,7 @@ static bool check_typename(const char *expected) {
     uint8_t typename_len = 0;
     const char *typename;
 
-    if ((typename = get_struct_field_typename(path_get_field())) == NULL) {
+    if ((typename = get_struct_field_typename(impl_get_current_field())) == NULL) {
         return false;
     }
     typename_len = strlen(typename);
@@ -183,7 +186,7 @@ bool filtering_message_info(const uint8_t *payload, uint8_t length) {
     const uint8_t *sig;
     uint8_t offset = 0;
 
-    if (path_get_root_type() != ROOT_DOMAIN) {
+    if (impl_get_root_type() != ROOT_DOMAIN) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -231,6 +234,26 @@ bool filtering_message_info(const uint8_t *payload, uint8_t length) {
     if (!N_storage.verbose_eip712) {
         ui_712_set_title("Contract", 8);
         ui_712_set_value(name, name_len);
+        // In the value-tree architecture the filter APDU for the message arrives while the
+        // root type is still ROOT_DOMAIN (message impl not yet set), so the old
+        // ROOT_MESSAGE guard in the streaming path never fires.  Add the Network
+        // pair here, before ui_712_redraw_generic_step(), so it appears in the
+        // review right after the Contract pair.  Skip if chain matches the app's
+        // own chain (same behaviour as ui_712_review_network).
+        if (ui_712_get_filtering_mode() == EIP712_FILTERING_FULL &&
+            impl_get_domain_chain_id() != g_chain_config->chain_id) {
+            uint64_t domain_chain_id = impl_get_domain_chain_id();
+            const char *network_name = get_network_name_from_chain_id(&domain_chain_id);
+            ui_712_set_title("Network", 7);
+            if (network_name != NULL) {
+                ui_712_set_value(network_name, strlen(network_name));
+            } else {
+                if (!format_u64(strings.tmp.tmp, NETWORK_STRING_MAX_SIZE, domain_chain_id)) {
+                    return false;
+                }
+                ui_712_set_value(NULL, 0);
+            }
+        }
         return ui_712_redraw_generic_step();
     }
     return true;
@@ -251,14 +274,14 @@ static bool matches_backup_path(const char *path, uint8_t path_len, uint8_t *off
     const char *key;
     uint8_t offset = 0;
 
-    for (uint8_t i = 0; i < path_backup_get_depth_count(); ++i) {
+    for (uint8_t i = 0; i < impl_backup_get_depth_count(); ++i) {
         if (i > 0) {
             if (((offset + 1) > path_len) || (memcmp(path + offset, ".", 1) != 0)) {
                 return false;
             }
             offset += 1;
         }
-        if ((field_ptr = path_backup_get_nth_field(i + 1)) != NULL) {
+        if ((field_ptr = impl_backup_get_nth_field(i + 1)) != NULL) {
             if ((key = field_ptr->key_name) != NULL) {
                 // field name
                 if (((offset + strlen(key)) > path_len) ||
@@ -312,7 +335,7 @@ bool filtering_discarded_path(const uint8_t *payload, uint8_t length) {
     if (!matches_backup_path(path, path_len, &path_offset)) {
         return false;
     }
-    if (!path_exists_in_backup(path + path_offset, path_len - path_offset)) {
+    if (!impl_backup_exists(path + path_offset, path_len - path_offset)) {
         return false;
     }
     ui_712_set_discarded_path(path, path_len);
@@ -337,7 +360,7 @@ bool filtering_calldata_spender(const uint8_t *payload,
     uint8_t sig_len;
     const uint8_t *sig;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -398,7 +421,7 @@ bool filtering_calldata_amount(const uint8_t *payload,
     uint8_t sig_len;
     const uint8_t *sig;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -459,7 +482,7 @@ bool filtering_calldata_selector(const uint8_t *payload,
     uint8_t sig_len;
     const uint8_t *sig;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -520,7 +543,7 @@ bool filtering_calldata_chain_id(const uint8_t *payload,
     uint8_t sig_len;
     const uint8_t *sig;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -581,7 +604,7 @@ bool filtering_calldata_callee(const uint8_t *payload,
     uint8_t sig_len;
     const uint8_t *sig;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -642,7 +665,7 @@ bool filtering_calldata_value(const uint8_t *payload,
     uint8_t sig_len;
     const uint8_t *sig;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -705,7 +728,7 @@ bool filtering_calldata_info(const uint8_t *payload, uint8_t length) {
     const uint8_t *sig;
     s_eip712_calldata_info *calldata_info;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -799,9 +822,7 @@ bool filtering_calldata_info(const uint8_t *payload, uint8_t length) {
             calldata_info->callee_state = CALLDATA_INFO_PARAM_UNSET;
             break;
         case CALLDATA_FLAG_ADDR_VERIFYING_CONTRACT:
-            memcpy(calldata_info->callee,
-                   eip712_context->contract_addr,
-                   sizeof(calldata_info->callee));
+            impl_get_domain_contract_addr(calldata_info->callee);
             calldata_info->callee_state = CALLDATA_INFO_PARAM_SET;
             break;
         default:
@@ -810,16 +831,14 @@ bool filtering_calldata_info(const uint8_t *payload, uint8_t length) {
     if (chain_id_flag) {
         calldata_info->chain_id_state = CALLDATA_INFO_PARAM_UNSET;
     } else {
-        calldata_info->chain_id = eip712_context->chain_id;
+        calldata_info->chain_id = impl_get_domain_chain_id();
         calldata_info->chain_id_state = CALLDATA_INFO_PARAM_SET;
     }
     if (selector_flag) calldata_info->selector_state = CALLDATA_INFO_PARAM_UNSET;
     if (amount_flag) calldata_info->amount_state = CALLDATA_INFO_PARAM_UNSET;
     switch (spender_flag) {
         case CALLDATA_FLAG_ADDR_VERIFYING_CONTRACT:
-            memcpy(calldata_info->spender,
-                   eip712_context->contract_addr,
-                   sizeof(calldata_info->spender));
+            impl_get_domain_contract_addr(calldata_info->spender);
             calldata_info->spender_state = CALLDATA_INFO_PARAM_SET;
             break;
         case CALLDATA_FLAG_ADDR_NONE:
@@ -860,7 +879,7 @@ bool filtering_trusted_name(const uint8_t *payload,
     const uint8_t *sig;
     uint8_t offset = 0;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -982,7 +1001,7 @@ bool filtering_date_time(const uint8_t *payload,
     const uint8_t *sig;
     uint8_t offset = 0;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -1048,7 +1067,7 @@ bool filtering_amount_join_token(const uint8_t *payload,
     const uint8_t *sig;
     uint8_t offset = 0;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -1109,7 +1128,7 @@ bool filtering_amount_join_value(const uint8_t *payload,
     const uint8_t *sig;
     uint8_t offset = 0;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }
@@ -1159,7 +1178,9 @@ bool filtering_amount_join_value(const uint8_t *payload,
         // Permit (ERC-2612)
         ui_712_token_join_prepare_addr_check(join_id);
         // simulate as if we had received a token-join addr
-        if (!ui_712_set_amount_join_token_addr(eip712_context->contract_addr)) {
+        uint8_t domain_contract[ADDRESS_LENGTH];
+        impl_get_domain_contract_addr(domain_contract);
+        if (!ui_712_set_amount_join_token_addr(domain_contract)) {
             return false;
         }
     }
@@ -1189,7 +1210,7 @@ bool filtering_raw_field(const uint8_t *payload,
     const uint8_t *sig;
     uint8_t offset = 0;
 
-    if (path_get_root_type() != ROOT_MESSAGE) {
+    if (impl_get_root_type() != ROOT_MESSAGE) {
         apdu_response_code = SWO_COMMAND_NOT_ALLOWED;
         return false;
     }

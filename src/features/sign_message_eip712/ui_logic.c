@@ -5,8 +5,7 @@
 #include "format.h"
 #include "common_utils.h"  // uint256_to_decimal
 #include "common_712.h"
-#include "context_712.h"     // eip712_context_deinit
-#include "path.h"            // path_get_root_type
+#include "context_712.h"  // eip712_context_deinit
 #include "apdu_constants.h"  // APDU response codes
 #include "typed_data.h"
 #include "commands_712.h"
@@ -113,7 +112,7 @@ static bool ui_712_next_field(void) {
         apdu_response_code = SWO_INCORRECT_DATA;
     } else {
         if (ui_ctx->structs_to_review > 0) {
-            ret = ui_712_review_struct(path_get_nth_field_to_last(ui_ctx->structs_to_review));
+            ret = ui_712_review_struct(impl_get_nth_struct_to_last(ui_ctx->structs_to_review));
             ui_ctx->structs_to_review -= 1;
         } else if (!ui_ctx->end_reached) {
             handle_eip712_return_code(true);
@@ -137,7 +136,7 @@ static bool ui_712_field_shown(void) {
 #ifdef SCREEN_SIZE_WALLET
         ret = true;
 #else
-        if (N_storage.verbose_eip712 || (path_get_root_type() == ROOT_DOMAIN)) {
+        if (N_storage.verbose_eip712 || (impl_get_root_type() == ROOT_DOMAIN)) {
             ret = true;
         }
 #endif
@@ -160,7 +159,7 @@ void ui_712_finalize_field(void) {
 }
 
 /**
- * Set a new intent for the EIP-712 batch transaction
+ * Set a new intent for the EIP-712 SafeBatch transaction
  *
  */
 void ui_712_set_intent(void) {
@@ -526,8 +525,9 @@ static s_amount_join *get_amount_join(uint8_t id) {
  */
 static bool ui_712_format_amount_join(const s_amount_join *amount_join) {
     const s_token_info *token_info;
+    uint64_t domain_chain_id = impl_get_domain_chain_id();
 
-    token_info = get_matching_token_info(&eip712_context->chain_id, amount_join->address);
+    token_info = get_matching_token_info(&domain_chain_id, amount_join->address);
     if (ismaxint(amount_join->value, sizeof(amount_join->value))) {
         strlcpy(strings.tmp.tmp, "Unlimited ", sizeof(strings.tmp.tmp));
         strlcat(strings.tmp.tmp,
@@ -607,15 +607,17 @@ static bool update_amount_join(s_amount_join *amount_join, const uint8_t *data, 
  */
 static bool ui_712_format_trusted_name(const uint8_t *data, uint8_t length) {
     const s_trusted_name *trusted_name;
+    uint64_t domain_chain_id;
 
     if (length != ADDRESS_LENGTH) {
         return false;
     }
+    domain_chain_id = impl_get_domain_chain_id();
     if ((trusted_name = get_trusted_name(ui_ctx->tn_type_count,
                                          ui_ctx->tn_types,
                                          ui_ctx->tn_source_count,
                                          ui_ctx->tn_sources,
-                                         &eip712_context->chain_id,
+                                         &domain_chain_id,
                                          data)) != NULL) {
         strlcpy(strings.tmp.tmp, trusted_name->name, sizeof(strings.tmp.tmp));
     }
@@ -677,7 +679,7 @@ static bool handle_fallback_empty_calldata(const s_eip712_calldata_info *calldat
         if (calldata_info->chain_id != 0) {
             chain_id = calldata_info->chain_id;
         } else {
-            chain_id = eip712_context->chain_id;
+            chain_id = impl_get_domain_chain_id();
         }
 
         ticker = get_displayable_ticker(&chain_id, g_chain_config, true);
@@ -976,6 +978,91 @@ bool ui_712_feed_to_display(const s_struct_712_field *field_ptr,
 
         return ui_712_redraw_generic_step();
     }
+    return true;
+}
+
+/**
+ * Accumulate a fully-received leaf value into the UI display system.
+ * Used in the value-tree architecture where impl APDUs never trigger display.
+ *
+ * Mirrors ui_712_feed_to_display() but skips ui_712_redraw_generic_step() and
+ * resets field flags at the end. Only runs in EIP712_FILTERING_FULL mode.
+ */
+bool ui_712_accumulate_value(const s_struct_712_field *field_ptr,
+                             const uint8_t *data,
+                             uint16_t length) {
+    if (ui_ctx == NULL) return true;
+    if (ui_ctx->filtering_mode != EIP712_FILTERING_FULL) return true;
+
+    // Clear accumulation buffer for fresh formatting.
+    explicit_bzero(strings.tmp.tmp, sizeof(strings.tmp.tmp));
+
+    if (ui_712_field_shown()) {
+        uint8_t clamped = (uint8_t) MIN(length, sizeof(strings.tmp.tmp) - 1);
+        switch (field_ptr->type) {
+            case TYPE_SOL_STRING:
+                ui_712_format_str(data, clamped, true);
+                break;
+            case TYPE_SOL_ADDRESS:
+                if (!ui_712_format_addr(data, (uint8_t) length, true)) return false;
+                break;
+            case TYPE_SOL_BOOL:
+                if (!ui_712_format_bool(data, (uint8_t) length, true)) return false;
+                break;
+            case TYPE_SOL_BYTES_FIX:
+            case TYPE_SOL_BYTES_DYN:
+                if (!ui_712_format_bytes(data, clamped, true, true)) return false;
+                break;
+            case TYPE_SOL_INT:
+                if (!ui_712_format_int(data, (uint8_t) length, true, field_ptr)) return false;
+                break;
+            case TYPE_SOL_UINT:
+                if (!ui_712_format_uint(data, (uint8_t) length, true)) return false;
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (ui_ctx->field_flags & UI_712_AMOUNT_JOIN) {
+        s_amount_join *amount_join = get_amount_join(ui_ctx->amount.current_id);
+        if (amount_join == NULL) return false;
+        if (!update_amount_join(amount_join, data, (uint8_t) MIN(length, 32))) return false;
+        if (amount_join->flags == (AMOUNT_JOIN_FLAG_TOKEN | AMOUNT_JOIN_FLAG_VALUE)) {
+            if (!ui_712_format_amount_join(amount_join)) return false;
+        }
+    }
+
+    if (ui_ctx->field_flags & UI_712_DATETIME) {
+        if (!ui_712_format_datetime(data, (uint8_t) length, field_ptr)) return false;
+    }
+
+    if (ui_ctx->field_flags & UI_712_TRUSTED_NAME) {
+        if (!ui_712_format_trusted_name(data, (uint8_t) length)) return false;
+    }
+
+    if (ui_ctx->field_flags & UI_712_CALLDATA) {
+        uint16_t remaining = length;
+        const uint8_t *ptr = data;
+        uint16_t total = length;
+        bool first = true;
+        // Use do-while so that an empty calldata field (length == 0) still
+        // triggers update_calldata once, allowing it to mark the calldata_info
+        // as processed and set value_state = CALLDATA_INFO_PARAM_SET.
+        do {
+            uint8_t chunk = (uint8_t) MIN(remaining, 0xFF);
+            bool last_chunk = (remaining <= 0xFF);
+            if (!update_calldata(ptr, chunk, first ? &total : NULL, last_chunk)) return false;
+            ptr += chunk;
+            remaining -= chunk;
+            first = false;
+        } while (remaining > 0);
+    }
+
+    if (ui_712_field_shown()) {
+        ui_712_set_value(NULL, 0);
+    }
+    ui_712_field_flags_reset();
     return true;
 }
 
