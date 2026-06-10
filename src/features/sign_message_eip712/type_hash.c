@@ -1,6 +1,5 @@
 #include "type_hash.h"
 #include "context_712.h"
-#include "shared_context.h"
 #include "app_mem_utils.h"
 #include "mem_utils.h"
 #include "format_hash_field_type.h"
@@ -11,55 +10,57 @@
 /**
  * Encode & hash the given structure field
  *
+ * @param[in,out] hash_ctx pointer to hash context
  * @param[in] field_ptr pointer to the struct field
  * @return \ref true it finished correctly, \ref false if it didn't (memory allocation)
  */
-static bool encode_and_hash_field(const s_struct_712_field *field_ptr) {
+static bool encode_and_hash_field(cx_sha3_t *hash_ctx, const s_struct_712_field *field_ptr) {
     const char *name;
 
-    if (!format_hash_field_type(field_ptr, (cx_hash_t *) &global_sha3)) {
+    if (!format_hash_field_type(field_ptr, (cx_hash_t *) hash_ctx)) {
         return false;
     }
     // space between field type name and field name
-    hash_byte(' ', (cx_hash_t *) &global_sha3);
+    hash_byte(' ', (cx_hash_t *) hash_ctx);
 
     // field name
     name = field_ptr->key_name;
-    hash_nbytes((uint8_t *) name, strlen(name), (cx_hash_t *) &global_sha3);
+    hash_nbytes((uint8_t *) name, strlen(name), (cx_hash_t *) hash_ctx);
     return true;
 }
 
 /**
  * Encode & hash the a given structure type
  *
+ * @param[in,out] hash_ctx pointer to hash context
  * @param[in] struct_ptr pointer to the structure we want the typestring of
  * @param[in] str_length length of the formatted string in memory
  * @return pointer of the string in memory, \ref NULL in case of an error
  */
-static bool encode_and_hash_type(const s_struct_712 *struct_ptr) {
+static bool encode_and_hash_type(cx_sha3_t *hash_ctx, const s_struct_712 *struct_ptr) {
     const char *struct_name;
     const s_struct_712_field *field_ptr;
 
     // struct name
     struct_name = struct_ptr->name;
-    hash_nbytes((uint8_t *) struct_name, strlen(struct_name), (cx_hash_t *) &global_sha3);
+    hash_nbytes((uint8_t *) struct_name, strlen(struct_name), (cx_hash_t *) hash_ctx);
 
     // opening struct parentheses
-    hash_byte('(', (cx_hash_t *) &global_sha3);
+    hash_byte('(', (cx_hash_t *) hash_ctx);
 
     for (field_ptr = struct_ptr->fields; field_ptr != NULL;
          field_ptr = (s_struct_712_field *) ((flist_node_t *) field_ptr)->next) {
         // comma separating struct fields
         if (field_ptr != struct_ptr->fields) {
-            hash_byte(',', (cx_hash_t *) &global_sha3);
+            hash_byte(',', (cx_hash_t *) hash_ctx);
         }
 
-        if (encode_and_hash_field(field_ptr) == false) {
+        if (encode_and_hash_field(hash_ctx, field_ptr) == false) {
             return NULL;
         }
     }
     // closing struct parentheses
-    hash_byte(')', (cx_hash_t *) &global_sha3);
+    hash_byte(')', (cx_hash_t *) hash_ctx);
 
     return true;
 }
@@ -174,6 +175,7 @@ static bool type_hash_internal(const char *struct_name,
                                const uint8_t struct_name_length,
                                uint8_t *hash_buf,
                                s_struct_dep **deps) {
+    cx_sha3_t hash_ctx;
     const void *struct_ptr;
 
     if ((struct_ptr = get_structn(struct_name, struct_name_length)) == NULL) {
@@ -182,7 +184,7 @@ static bool type_hash_internal(const char *struct_name,
         PRINTF("\" for type_hash\n");
         return false;
     }
-    if (cx_keccak_init_no_throw(&global_sha3, 256) != CX_OK) {
+    if (cx_keccak_init_no_throw(&hash_ctx, 256) != CX_OK) {
         return false;
     }
     // get_struct_dependencies may populate `deps` partially before failing;
@@ -191,19 +193,19 @@ static bool type_hash_internal(const char *struct_name,
         return false;
     }
     flist_sort((flist_node_t **) deps, (f_list_node_cmp) &compare_struct_deps);
-    if (encode_and_hash_type(struct_ptr) == false) {
+    if (encode_and_hash_type(&hash_ctx, struct_ptr) == false) {
         return false;
     }
     // loop over each struct and generate string
     for (const s_struct_dep *tmp = *deps; tmp != NULL;
          tmp = (s_struct_dep *) ((flist_node_t *) tmp)->next) {
-        if (encode_and_hash_type(tmp->s) == false) {
+        if (encode_and_hash_type(&hash_ctx, tmp->s) == false) {
             return false;
         }
     }
 
     // copy hash into memory
-    if (finalize_hash((cx_hash_t *) &global_sha3, hash_buf, KECCAK256_HASH_BYTESIZE) != true) {
+    if (finalize_hash((cx_hash_t *) &hash_ctx, hash_buf, KECCAK256_HASH_BYTESIZE) != true) {
         return false;
     }
     return true;
