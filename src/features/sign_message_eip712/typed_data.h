@@ -102,3 +102,9 @@ bool impl_backup_exists(const char *path, size_t length);
 
 uint64_t impl_get_domain_chain_id(void);
 bool impl_get_domain_contract_addr(uint8_t addr[ADDRESS_LENGTH]);
+
+// Visitor callback for value tree traversal. Return false to abort traversal.
+typedef bool (*f_value_visitor)(const s_struct_712_value *node, void *context);
+
+bool impl_traverse_domain(f_value_visitor visitor, void *context);
+bool impl_traverse_message(f_value_visitor visitor, void *context);

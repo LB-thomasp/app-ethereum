@@ -298,12 +298,25 @@ uint16_t handle_eip712_sign(const uint8_t *cdata, uint8_t length) {
             apdu_response_code = SWO_INCORRECT_DATA;
             eip712_context->go_home_on_failure = false;
         } else {
+            bool should_start_ui = true;
+
             // Only call ui_712_start() if not already in signing state (FULL filtering
             // with filtering APDUs may have already transitioned appState via display).
             if (appState != APP_STATE_SIGNING_EIP712) {
-                apdu_response_code = ui_712_start(ui_712_get_filtering_mode());
+                // For verbose/no-filtering mode, populate UI pairs from value tree before starting
+                // UI
+                if (ui_712_get_filtering_mode() == EIP712_FILTERING_BASIC) {
+                    if (!ui_712_populate_from_value_tree()) {
+                        PRINTF("ui_712_populate_from_value_tree failed\n");
+                        apdu_response_code = SWO_INCORRECT_DATA;
+                        should_start_ui = false;
+                    }
+                }
+                if (should_start_ui) {
+                    apdu_response_code = ui_712_start(ui_712_get_filtering_mode());
+                }
             }
-            if (apdu_response_code == SWO_SUCCESS) {
+            if (should_start_ui && (apdu_response_code == SWO_SUCCESS)) {
                 ret = true;
 #ifndef SCREEN_SIZE_WALLET
                 if (!N_storage.verbose_eip712 &&
@@ -312,6 +325,8 @@ uint16_t handle_eip712_sign(const uint8_t *cdata, uint8_t length) {
                 }
 #endif
                 ui_712_end_sign();
+            } else if (apdu_response_code != SWO_SUCCESS) {
+                PRINTF("SIGN fail: ui_712_start code=0x%04x\n", apdu_response_code);
             }
         }
     }

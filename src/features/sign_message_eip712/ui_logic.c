@@ -273,7 +273,7 @@ bool ui_712_message_hash(void) {
  * @param[in] length its length
  * @param[in] last if this is the last chunk
  */
-static void ui_712_format_str(const uint8_t *data, uint8_t length, bool last) {
+static void ui_712_format_str(const uint8_t *data, size_t length, bool last) {
     size_t max_len = sizeof(strings.tmp.tmp) - 1;
     size_t cur_len = strlen(strings.tmp.tmp);
     size_t available;
@@ -1052,6 +1052,85 @@ bool ui_712_message_info_received(void) {
  */
 void ui_712_field_flags_reset(void) {
     ui_ctx->field_flags = 0;
+}
+
+/**
+ * Visitor callback for verbose mode tree traversal.
+ * Formats VAL_ATOMIC leaves as UI pairs. Ignores VAL_STRUCT/VAL_ARRAY.
+ */
+static bool format_leaf_for_verbose(const s_struct_712_value *node, void *context) {
+    (void) context;
+
+    if (node == NULL || node->kind != VAL_ATOMIC) return true;
+
+    const s_struct_712_field *field = node->field;
+    const uint8_t *data = node->data;
+    uint16_t length = node->length;
+
+    if (field == NULL || field->key_name == NULL) return true;
+
+    // Set title
+    ui_712_set_title(field->key_name, strlen(field->key_name));
+
+    // Clear temp buffer
+    explicit_bzero(strings.tmp.tmp, sizeof(strings.tmp.tmp));
+
+    // Format value based on type
+    switch (field->type) {
+        case TYPE_SOL_STRING:
+            ui_712_format_str(data, length, true);
+            break;
+        case TYPE_SOL_ADDRESS:
+            if (!ui_712_format_addr(data, length, true)) return false;
+            break;
+        case TYPE_SOL_BOOL:
+            if (!ui_712_format_bool(data, length, true)) return false;
+            break;
+        case TYPE_SOL_BYTES_FIX:
+        case TYPE_SOL_BYTES_DYN:
+            if (!ui_712_format_bytes(data, length, true, true)) return false;
+            break;
+        case TYPE_SOL_INT:
+            if (!ui_712_format_int(data, length, true, field)) return false;
+            break;
+        case TYPE_SOL_UINT:
+            if (!ui_712_format_uint(data, length, true)) return false;
+            break;
+        default:
+            return true;  // Skip unknown types
+    }
+
+    // Set value and push pair
+    ui_712_set_value(NULL, 0);
+    ui_712_push_pairs();
+    return true;
+}
+
+/**
+ * Build UI pairs from value tree for verbose/no-filtering mode.
+ * Walks domain (all devices).
+ * Message fields: Stax/Flex/Apex always, Nano only if verbose_eip712 enabled.
+ * Message hash for Nano non-verbose is handled separately by ui_712_message_hash().
+ * Domain/Message hashes when displayHash enabled are added later by ui_712_end_sign.
+ */
+bool ui_712_populate_from_value_tree(void) {
+    if (ui_ctx == NULL) return false;
+
+    // Domain fields
+    if (!impl_traverse_domain(format_leaf_for_verbose, NULL)) return false;
+
+#ifdef SCREEN_SIZE_WALLET
+    // Stax/Flex/Apex: always show message fields
+    if (!impl_traverse_message(format_leaf_for_verbose, NULL)) return false;
+#else
+    // Nano: show message fields only if raw messages enabled
+    if (N_storage.verbose_eip712) {
+        if (!impl_traverse_message(format_leaf_for_verbose, NULL)) return false;
+    }
+    // Nano non-verbose: message hash is added by ui_712_message_hash() in handle_eip712_sign
+#endif
+
+    return true;
 }
 
 void ui_712_token_join_prepare_addr_check(uint8_t id) {

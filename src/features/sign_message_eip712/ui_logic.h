@@ -70,6 +70,7 @@ void ui_712_reject(void);
 void ui_712_set_intent(void);
 void ui_712_set_title(const char *str, size_t length);
 void ui_712_set_value(const char *str, size_t length);
+bool ui_712_populate_from_value_tree(void);
 bool ui_712_message_hash(void);
 bool ui_712_continue_or_finish(void);
 void ui_712_flag_field(bool show,

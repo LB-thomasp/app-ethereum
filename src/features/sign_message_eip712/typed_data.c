@@ -819,6 +819,44 @@ bool impl_get_domain_contract_addr(uint8_t addr[ADDRESS_LENGTH]) {
     return false;
 }
 
+/**
+ * Recursive helper for tree traversal. Visits node, then recurses on children if
+ * VAL_STRUCT/VAL_ARRAY.
+ * @return false if visitor returned false (abort), true otherwise
+ */
+static bool traverse_node(const s_struct_712_value *node, f_value_visitor visitor, void *context) {
+    if (node == NULL) return true;
+
+    // Visit this node
+    if (!visitor(node, context)) return false;
+
+    // Recurse on children for composite types
+    if (node->kind == VAL_STRUCT || node->kind == VAL_ARRAY) {
+        for (const s_struct_712_value *child = node->children; child != NULL;
+             child = (const s_struct_712_value *) ((const flist_node_t *) child)->next) {
+            if (!traverse_node(child, visitor, context)) return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Traverse domain value tree with visitor callback.
+ */
+bool impl_traverse_domain(f_value_visitor visitor, void *context) {
+    if (visitor == NULL) return false;
+    return traverse_node(g_impl.domain, visitor, context);
+}
+
+/**
+ * Traverse message value tree with visitor callback.
+ */
+bool impl_traverse_message(f_value_visitor visitor, void *context) {
+    if (visitor == NULL) return false;
+    return traverse_node(g_impl.message, visitor, context);
+}
+
 bool impl_hash_pass(void) {
     return value_hash_pass(&g_impl);
 }
