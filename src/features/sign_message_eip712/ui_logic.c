@@ -6,7 +6,6 @@
 #include "common_utils.h"  // uint256_to_decimal
 #include "common_712.h"
 #include "context_712.h"  // eip712_context_deinit
-#include "apdu_constants.h"  // APDU response codes
 #include "typed_data.h"
 #include "commands_712.h"
 #include "common_ui.h"

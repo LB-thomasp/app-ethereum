@@ -11,6 +11,7 @@ typedef struct {
 } s_eip712_context;
 
 extern s_eip712_context *eip712_context;
+extern uint16_t apdu_response_code;
 
 bool eip712_context_init(void);
 void eip712_context_deinit(void);

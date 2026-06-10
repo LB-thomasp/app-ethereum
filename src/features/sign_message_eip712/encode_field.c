@@ -1,6 +1,6 @@
 #include "encode_field.h"
+#include "context_712.h"
 #include "app_mem_utils.h"
-#include "apdu_constants.h"  // APDU response codes
 
 typedef enum { MSB, LSB } e_padding_type;
 

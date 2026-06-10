@@ -121,5 +121,3 @@ uint16_t handle_get_eth2_public_key(uint8_t p1,
 #endif
 
 uint16_t handle_safe_account(uint8_t p1, uint8_t p2, const uint8_t *data, uint8_t length);
-
-extern uint16_t apdu_response_code;

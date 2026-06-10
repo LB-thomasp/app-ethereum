@@ -1,8 +1,8 @@
 #include "sol_typenames.h"
+#include "context_712.h"
 #include "app_mem_utils.h"
 #include "mem_utils.h"
 #include "os_pic.h"
-#include "apdu_constants.h"  // APDU response codes
 #include "typed_data.h"
 #include "common_utils.h"  // ARRAY_SIZE
 

@@ -2,8 +2,8 @@
 #include "app_mem_utils.h"
 #include "mem_utils.h"
 #include "commands_712.h"
+#include "context_712.h"
 #include "hash_bytes.h"
-#include "apdu_constants.h"  // APDU response codes
 #include "typed_data.h"
 
 /**

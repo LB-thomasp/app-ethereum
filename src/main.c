@@ -64,7 +64,6 @@ strings_t strings;
 cx_sha3_t global_sha3;
 
 uint8_t appState;
-uint16_t apdu_response_code;
 pluginType_t pluginType;
 
 #ifdef HAVE_ETH2

@@ -1,11 +1,11 @@
 #include "value_hash.h"
 #include "typed_data.h"
+#include "context_712.h"
 #include "type_hash.h"
 #include "encode_field.h"
 #include "hash_bytes.h"
 #include "app_mem_utils.h"
-#include "common_utils.h"  // KECCAK256_HASH_BYTESIZE
-#include "apdu_constants.h"
+#include "common_utils.h"    // KECCAK256_HASH_BYTESIZE
 #include "shared_context.h"  // tmpCtx
 
 static bool hash_value(const s_struct_712_value *node, uint8_t *out, uint8_t depth);

@@ -1,6 +1,5 @@
 #include "typed_data.h"
 #include "sol_typenames.h"
-#include "apdu_constants.h"  // APDU response codes
 #include "context_712.h"
 #include "common_utils.h"
 #include "app_mem_utils.h"

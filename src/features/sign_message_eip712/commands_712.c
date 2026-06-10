@@ -1,4 +1,3 @@
-#include "apdu_constants.h"  // APDU response codes
 #include "context_712.h"
 #include "ui_logic.h"
 #include "typed_data.h"

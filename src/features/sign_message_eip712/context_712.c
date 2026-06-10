@@ -4,11 +4,11 @@
 #include "sol_typenames.h"
 #include "ui_logic.h"
 #include "typed_data.h"
-#include "apdu_constants.h"  // APDU response codes
 #include "shared_context.h"  // reset_app_context
 #include "common_ui.h"       // ui_idle
 
 s_eip712_context *eip712_context = NULL;
+uint16_t apdu_response_code;
 
 /**
  * Initialize the EIP712 context

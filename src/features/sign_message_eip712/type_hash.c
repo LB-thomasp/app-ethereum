@@ -1,9 +1,10 @@
+#include "type_hash.h"
+#include "context_712.h"
+#include "shared_context.h"
 #include "app_mem_utils.h"
 #include "mem_utils.h"
-#include "type_hash.h"
 #include "format_hash_field_type.h"
 #include "hash_bytes.h"
-#include "apdu_constants.h"  // APDU response codes
 #include "typed_data.h"
 #include "lists.h"
 

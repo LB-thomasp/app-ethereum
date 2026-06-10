@@ -1,6 +1,5 @@
 #include "filtering.h"
 #include "hash_bytes.h"
-#include "apdu_constants.h"  // APDU return codes
 #include "public_keys.h"
 #include "manage_asset_info.h"
 #include "context_712.h"
